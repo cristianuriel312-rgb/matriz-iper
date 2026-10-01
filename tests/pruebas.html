@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pruebas — Matriz IPER</title>
+    <link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 1rem; background: #f1f4f7; color: #1f2933; }
+        h1 { color: #0f3d63; font-size: 1.3rem; }
+        li { margin: .2rem 0; }
+        .ok { color: #1e7b34; } .fallo { color: #b3261e; font-weight: 700; }
+        #resumen { font-weight: 700; padding: .5rem 1rem; border-radius: 8px; background: #fff; }
+    </style>
+</head>
+<body>
+<h1>Pruebas funcionales — Matriz IPER</h1>
+<p id="resumen" aria-live="polite">Ejecutando…</p>
+<ol id="resultados"></ol>
+<div id="zona-xss" hidden></div>
+<script type="module">
+import { calcularNRI, clasificarRiesgo, validarMatrizRiesgos, construirEvaluacion } from "../js/riesgo.js";
+import { catalogoPeligros, obtenerTipos, obtenerSubtipos, obtenerDanos, obtenerNormativa, frecuencias, severidades } from "../js/catalogo.js";
+import { h, uuid, normalizar } from "../js/utils.js";
+import { generarCSV } from "../js/exportar.js";
+
+const resultados = [];
+const prueba = (nombre, fn) => {
+    try { const r = fn(); resultados.push({ nombre, ok: r !== false }); }
+    catch (e) { resultados.push({ nombre: `${nombre} — ${e.message}`, ok: false }); }
+};
+const igual = (a, b) => { if (a !== b) throw new Error(`esperado ${JSON.stringify(b)}, obtenido ${JSON.stringify(a)}`); };
+
+// --- Matriz de riesgo ---
+prueba("validarMatrizRiesgos: 9 BAJO + 6 MEDIO + 10 ALTO = 25, sin faltantes", () => { const v = validarMatrizRiesgos(); if (!v.valida) throw new Error(v.errores.join(" ")); igual(v.total, 25); });
+const casos = { A1: "ALTO", A5: "ALTO", B4: "MEDIO", C3: "MEDIO", C5: "BAJO", C1: "ALTO", D2: "MEDIO", E1: "BAJO", E5: "BAJO" };
+for (const [nri, nivel] of Object.entries(casos)) prueba(`${nri} = ${nivel}`, () => igual(clasificarRiesgo(nri), nivel));
+prueba("NRI concatena (C + 3 = C3), no multiplica", () => igual(calcularNRI("C", "3"), "C3"));
+prueba("Mapeo frecuencia código 5 → F=1 … código 1 → F=5", () => { igual(frecuencias["5"].valor, 1); igual(frecuencias["4"].valor, 2); igual(frecuencias["3"].valor, 3); igual(frecuencias["2"].valor, 4); igual(frecuencias["1"].valor, 5); });
+prueba("Mapeo severidad A=5 … E=1", () => { igual(severidades.A.valor, 5); igual(severidades.C.valor, 3); igual(severidades.E.valor, 1); });
+prueba("construirEvaluacion C/3 → C3 MEDIO, S=3, F=3", () => { const e = construirEvaluacion("C", "3"); igual(e.nri, "C3"); igual(e.nivelRiesgo, "MEDIO"); igual(e.severidad.valor, 3); igual(e.frecuencia.valor, 3); });
+prueba("construirEvaluacion incompleta no genera NRI", () => { const e = construirEvaluacion("C", ""); igual(e.nri, ""); igual(e.nivelRiesgo, ""); });
+
+// --- Catálogo ---
+prueba("Catálogo: 8 tipos en el orden indicado", () => igual(obtenerTipos().join("|"), "FÍSICO|MECÁNICO/CINÉTICO|ELÉCTRICO|QUÍMICO|ERGONÓMICO|PSICOSOCIAL|BIOLÓGICO|ACCIDENTE"));
+prueba("Catálogo: 66 registros", () => igual(catalogoPeligros.length, 66));
+prueba("Subtipos sin duplicados (QUÍMICO)", () => { const s = obtenerSubtipos("QUÍMICO"); igual(new Set(s).size, s.length); igual(s.length, 6); });
+prueba("Daños aplicables QUÍMICO/Polvos = 4", () => igual(obtenerDanos("QUÍMICO", "Polvos").length, 4));
+prueba("ELÉCTRICO / Arco eléctrico / Quemadura por arco eléctrico → NOM-029-STPS-2011", () => igual(obtenerNormativa("ELÉCTRICO", "Arco eléctrico", "Quemadura por arco eléctrico").normaPrincipal, "NOM-029-STPS-2011"));
+prueba("ACCIDENTE / Espacio confinado / Asfixia → NOM-033-STPS-2015", () => igual(obtenerNormativa("ACCIDENTE", "Espacio confinado", "Asfixia").normaPrincipal, "NOM-033-STPS-2015"));
+prueba("QUÍMICO / Vapores / Intoxicación → NOM-010-STPS-2014", () => igual(obtenerNormativa("QUÍMICO", "Vapores", "Intoxicación").normaPrincipal, "NOM-010-STPS-2014"));
+prueba("Combinación inválida → null", () => igual(obtenerNormativa("QUÍMICO", "Vapores", "Fractura"), null));
+prueba("Sin normas complementarias → cadena vacía (UI muestra 'No especificadas')", () => igual(obtenerNormativa("FÍSICO", "Vibraciones", "Trastornos musculoesqueléticos").normasComplementarias, ""));
+
+// --- Seguridad ---
+const entradas = [`< > & " ' / á é í ó ú ñ`, "<script>alert(1)<\/script>", `<img src=x onerror="window.__xss=1">`];
+prueba("h() inserta texto sin interpretar HTML", () => {
+    const zona = document.getElementById("zona-xss");
+    for (const t of entradas) {
+        const el = h("p", {}, t);
+        zona.append(el);
+        igual(el.textContent, t);
+        igual(el.children.length, 0);
+    }
+    igual(window.__xss, undefined);
+});
+prueba("CSV: BOM UTF-8, comillas escapadas y fórmulas neutralizadas", () => {
+    const csv = generarCSV([{ subArea: `=HYPERLINK("x")`, proceso: `a "b" c`, actividad: "ñandú", peligros: [{ tipo: "QUÍMICO", evaluacionInicial: {}, controlesSTOP: { S: [], T: [], O: [], P: [] }, controlesExistentes: [] }], fotografias: [] }]);
+    igual(csv.charCodeAt(0), 0xFEFF);
+    if (!csv.includes(`"'=HYPERLINK(""x"")"`)) throw new Error("fórmula no neutralizada");
+    if (!csv.includes(`"a ""b"" c"`)) throw new Error("comillas no escapadas");
+    if (!csv.includes("ñandú")) throw new Error("acentos perdidos");
+});
+
+// --- Utilidades ---
+prueba("uuid() formato v4 y único", () => { const a = uuid(), b = uuid(); if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(a)) throw new Error(a); if (a === b) throw new Error("duplicado"); });
+prueba("normalizar() quita acentos para búsqueda", () => igual(normalizar("MECÁNICO Áéíóú"), "mecanico aeiou"));
+
+const ol = document.getElementById("resultados");
+for (const r of resultados) ol.append(Object.assign(document.createElement("li"), { className: r.ok ? "ok" : "fallo", textContent: `${r.ok ? "✔" : "✖"} ${r.nombre}` }));
+const fallos = resultados.filter(r => !r.ok).length;
+const resumen = document.getElementById("resumen");
+resumen.textContent = `${resultados.length - fallos} de ${resultados.length} pruebas correctas${fallos ? ` — ${fallos} FALLO(S)` : ""}`;
+resumen.className = fallos ? "fallo" : "ok";
+window.__resultadosPruebas = { total: resultados.length, fallos, detalle: resultados };
+</script>
+</body>
+</html>

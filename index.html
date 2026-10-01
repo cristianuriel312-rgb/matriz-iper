@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="description" content="Matriz de Identificación de Peligros y Evaluación de Riesgos (IPER) con metodología STOP.">
+    <meta name="theme-color" content="#0f3d63">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="IPER">
+    <title>Matriz IPER</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="assets/icon-192.png">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip-link" href="#contenido">Saltar al contenido</a>
+
+<header class="app-header">
+    <div class="app-header__marca">
+        <img src="assets/icon.svg" alt="" width="40" height="40" class="app-header__logo">
+        <div>
+            <h1 class="app-header__titulo">Matriz de Identificación de Peligros y Evaluación de Riesgos</h1>
+            <p class="app-header__subtitulo">Identificación de actividades, peligros, evaluación de riesgo y controles operacionales</p>
+        </div>
+    </div>
+    <div class="app-header__acciones">
+        <span id="estado-conexion" class="estado-conexion" role="status" aria-live="polite"></span>
+        <button type="button" id="btn-sincronizar" class="btn btn--secundario btn--compacto">
+            🔄 Sincronizar <span id="badge-pendientes" class="badge" hidden>0</span>
+        </button>
+        <button type="button" id="btn-config" class="btn btn--fantasma btn--compacto" aria-label="Configuración">⚙ <span class="solo-amplio">Configuración</span></button>
+    </div>
+    <p class="aviso-normativo">La aplicabilidad normativa deberá validarse conforme a las condiciones específicas del centro de trabajo y la normativa vigente.</p>
+</header>
+
+<nav class="pestanas" role="tablist" aria-label="Secciones">
+    <button type="button" role="tab" id="tab-captura" aria-controls="vista-captura" aria-selected="true" class="pestana">📝 Captura</button>
+    <button type="button" role="tab" id="tab-matriz" aria-controls="vista-matriz" aria-selected="false" class="pestana" tabindex="-1">📋 Matriz <span id="tab-matriz-total" class="badge badge--claro">0</span></button>
+</nav>
+
+<main id="contenido" tabindex="-1">
+
+<!-- ===================== VISTA CAPTURA ===================== -->
+<section id="vista-captura" role="tabpanel" aria-labelledby="tab-captura" class="vista">
+
+    <div id="banner-borrador" class="banner banner--info" hidden>
+        <p><strong>Se encontró información sin guardar.</strong> <span id="banner-borrador-detalle"></span></p>
+        <div class="banner__acciones">
+            <button type="button" id="btn-continuar-borrador" class="btn btn--primario btn--compacto">Continuar borrador</button>
+            <button type="button" id="btn-descartar-borrador" class="btn btn--fantasma btn--compacto">Descartar</button>
+        </div>
+    </div>
+
+    <div id="banner-edicion" class="banner banner--edicion" hidden>
+        <p>✏️ Editando registro existente: <strong id="banner-edicion-nombre"></strong></p>
+        <button type="button" id="btn-cancelar-edicion" class="btn btn--fantasma btn--compacto">Cancelar edición</button>
+    </div>
+
+    <ol class="stepper" id="stepper" aria-label="Pasos de captura"></ol>
+    <p class="stepper__indicador" id="paso-indicador" aria-live="polite"></p>
+
+    <form id="form-iper" novalidate autocomplete="off">
+
+        <!-- PASO 1 -->
+        <fieldset class="paso tarjeta" data-paso="1">
+            <legend class="tarjeta__titulo">Información de la actividad</legend>
+            <div class="rejilla-campos">
+                <div class="campo">
+                    <label for="f-subarea">Sub área <span class="req" aria-hidden="true">*</span></label>
+                    <input id="f-subarea" name="subArea" type="text" required maxlength="200" data-campo="subArea">
+                </div>
+                <div class="campo">
+                    <label for="f-proceso">Proceso <span class="req" aria-hidden="true">*</span></label>
+                    <input id="f-proceso" name="proceso" type="text" required maxlength="200" data-campo="proceso">
+                </div>
+                <div class="campo campo--ancho">
+                    <label for="f-actividad">Actividad <span class="req" aria-hidden="true">*</span></label>
+                    <input id="f-actividad" name="actividad" type="text" required maxlength="300" data-campo="actividad">
+                </div>
+                <div class="campo campo--ancho">
+                    <label for="f-tareas">Tareas <span class="req" aria-hidden="true">*</span></label>
+                    <textarea id="f-tareas" name="tareas" rows="4" required maxlength="4000" data-campo="tareas"></textarea>
+                </div>
+                <div class="campo">
+                    <label for="f-tipo-actividad">Tipo de actividad <span class="req" aria-hidden="true">*</span></label>
+                    <select id="f-tipo-actividad" name="tipoActividad" required data-campo="tipoActividad">
+                        <option value="">Seleccione...</option>
+                        <option value="Rutinaria">Rutinaria</option>
+                        <option value="No rutinaria">No rutinaria</option>
+                    </select>
+                </div>
+            </div>
+        </fieldset>
+
+        <!-- PASO 2 -->
+        <fieldset class="paso tarjeta" data-paso="2" hidden>
+            <legend class="tarjeta__titulo">Modo de ocurrencia y fotografías</legend>
+            <div class="campo">
+                <label for="f-modo">Modo de ocurrencia / paso a paso <span class="req" aria-hidden="true">*</span>
+                    <span id="badge-modo-ia" class="badge badge--ia" hidden>✨ Descripción asistida por IA</span>
+                </label>
+                <textarea id="f-modo" name="modoOcurrencia" rows="8" required maxlength="8000"
+                          placeholder="Describa paso a paso cómo se realiza la tarea y en qué momento puede presentarse el peligro."></textarea>
+            </div>
+            <div class="acciones-linea">
+                <button type="button" id="btn-mejorar-modo" class="btn btn--ia">✨ Mejorar descripción con IA</button>
+            </div>
+
+            <h3 class="subtitulo-seccion">Evidencia Fotográfica del Área</h3>
+            <p class="ayuda">Formatos: JPG, JPEG, PNG, WEBP. Tamaño máximo por archivo: <span id="limite-foto">10 MB</span>. Las imágenes se comprimen antes de guardarse.</p>
+            <div class="acciones-linea">
+                <label class="btn btn--secundario btn-archivo">
+                    📷 Agregar fotografía
+                    <input type="file" id="f-foto-camara" accept="image/jpeg,image/png,image/webp,image/*" capture="environment" class="visualmente-oculto">
+                </label>
+                <label class="btn btn--fantasma btn-archivo">
+                    🖼 Seleccionar imágenes existentes
+                    <input type="file" id="f-foto-galeria" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" multiple class="visualmente-oculto">
+                </label>
+            </div>
+            <ul id="lista-fotos" class="lista-fotos" aria-live="polite"></ul>
+
+            <div id="panel-hallazgos-confirmados" hidden>
+                <h3 class="subtitulo-seccion">Hallazgos visuales confirmados</h3>
+                <ul id="lista-hallazgos-confirmados" class="lista-simple"></ul>
+            </div>
+        </fieldset>
+
+        <!-- PASO 3 -->
+        <fieldset class="paso tarjeta" data-paso="3" hidden>
+            <legend class="tarjeta__titulo">Identificación del peligro</legend>
+            <p class="ayuda">Una actividad puede tener varios peligros. Cada peligro tiene su propia evaluación y controles STOP.</p>
+            <div class="peligros-barra">
+                <div id="lista-peligros" class="chips" role="list" aria-label="Peligros de la actividad"></div>
+                <button type="button" id="btn-agregar-peligro" class="btn btn--secundario btn--compacto">＋ Agregar otro peligro</button>
+            </div>
+
+            <div class="rejilla-campos">
+                <div class="campo">
+                    <label for="f-tipo-peligro">Tipo de peligro <span class="req" aria-hidden="true">*</span></label>
+                    <select id="f-tipo-peligro" required></select>
+                </div>
+                <div class="campo">
+                    <label for="f-subtipo">Subtipo <span class="req" aria-hidden="true">*</span></label>
+                    <select id="f-subtipo" required disabled><option value="">Seleccione tipo primero...</option></select>
+                </div>
+                <div class="campo campo--ancho">
+                    <label for="f-dano">Daño potencial <span class="req" aria-hidden="true">*</span></label>
+                    <select id="f-dano" required disabled><option value="">Seleccione subtipo primero...</option></select>
+                </div>
+            </div>
+
+            <div class="normativa" id="panel-normativa" aria-live="polite">
+                <h3 class="subtitulo-seccion">Información normativa</h3>
+                <div class="rejilla-campos">
+                    <div class="campo">
+                        <label for="f-norma">Norma principal</label>
+                        <input id="f-norma" type="text" readonly>
+                    </div>
+                    <div class="campo">
+                        <label for="f-complementarias">Normas complementarias</label>
+                        <input id="f-complementarias" type="text" readonly>
+                    </div>
+                    <div class="campo campo--ancho">
+                        <label for="f-criterio">Criterio de aplicación</label>
+                        <textarea id="f-criterio" rows="2" readonly></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="acciones-linea">
+                <button type="button" id="btn-eliminar-peligro" class="btn btn--peligro btn--compacto">Eliminar este peligro</button>
+            </div>
+        </fieldset>
+
+        <!-- PASO 4 -->
+        <fieldset class="paso tarjeta" data-paso="4" hidden>
+            <legend class="tarjeta__titulo">Evaluación de Riesgo Inicial</legend>
+            <p class="peligro-activo" data-peligro-activo></p>
+            <div class="rejilla-campos">
+                <div class="campo">
+                    <label for="f-severidad">Severidad <span class="req" aria-hidden="true">*</span></label>
+                    <select id="f-severidad" required aria-describedby="def-severidad"></select>
+                    <p id="def-severidad" class="definicion"></p>
+                </div>
+                <div class="campo">
+                    <label for="f-frecuencia">Frecuencia <span class="req" aria-hidden="true">*</span></label>
+                    <select id="f-frecuencia" required aria-describedby="def-frecuencia"></select>
+                    <p id="def-frecuencia" class="definicion"></p>
+                </div>
+            </div>
+
+            <h3 class="subtitulo-seccion" id="titulo-matriz">Matriz de riesgo 5 × 5</h3>
+            <p class="ayuda">Toque una celda para seleccionar la combinación Severidad + Frecuencia.</p>
+            <div class="matriz-wrap">
+                <table class="matriz-riesgo" id="matriz-riesgo" aria-labelledby="titulo-matriz"></table>
+            </div>
+
+            <section class="resultado" id="resultado-evaluacion" aria-live="polite" aria-labelledby="titulo-resultado">
+                <h3 id="titulo-resultado" class="resultado__titulo">Resultado de Evaluación Inicial</h3>
+                <dl class="resultado__datos">
+                    <div><dt>Severidad</dt><dd data-res="severidad">—</dd></div>
+                    <div><dt>Valor S</dt><dd data-res="valorS">—</dd></div>
+                    <div><dt>Frecuencia</dt><dd data-res="frecuencia">—</dd></div>
+                    <div><dt>Valor F</dt><dd data-res="valorF">—</dd></div>
+                    <div><dt>NRI</dt><dd data-res="nri">—</dd></div>
+                    <div><dt>Nivel de Riesgo Inicial</dt><dd data-res="nivel">—</dd></div>
+                </dl>
+            </section>
+        </fieldset>
+
+        <!-- PASO 5 -->
+        <fieldset class="paso tarjeta" data-paso="5" hidden>
+            <legend class="tarjeta__titulo">Controles Operacionales — STOP</legend>
+            <p class="peligro-activo" data-peligro-activo></p>
+            <details class="stop-info">
+                <summary>¿Qué es STOP? Jerarquía S → T → O → P</summary>
+                <ol class="stop-jerarquia" id="stop-jerarquia"></ol>
+            </details>
+
+            <h3 class="subtitulo-seccion">Controles existentes <small>(confirmados por el usuario)</small></h3>
+            <ul id="lista-controles-existentes" class="lista-controles"></ul>
+            <div class="form-control-nuevo" id="form-existente">
+                <div class="campo">
+                    <label for="f-existente-cat">Categoría</label>
+                    <select id="f-existente-cat"></select>
+                </div>
+                <div class="campo campo--crece">
+                    <label for="f-existente-texto">Control existente</label>
+                    <input id="f-existente-texto" type="text" maxlength="500">
+                </div>
+                <button type="button" id="btn-agregar-existente" class="btn btn--secundario">Agregar existente</button>
+            </div>
+
+            <h3 class="subtitulo-seccion">Controles adicionales <small>(recomendados o agregados)</small></h3>
+            <div class="acciones-linea">
+                <button type="button" id="btn-sugerir-controles" class="btn btn--ia">✨ Sugerir controles con IA</button>
+            </div>
+            <div id="panel-sugerencias" class="panel-sugerencias" hidden></div>
+
+            <div id="grupos-stop" class="grupos-stop"></div>
+
+            <div class="form-control-nuevo" id="form-adicional">
+                <div class="campo">
+                    <label for="f-adicional-cat">Categoría</label>
+                    <select id="f-adicional-cat"></select>
+                </div>
+                <div class="campo campo--crece">
+                    <label for="f-adicional-texto">Nuevo control adicional</label>
+                    <input id="f-adicional-texto" type="text" maxlength="500">
+                </div>
+                <div class="campo campo--crece">
+                    <label for="f-adicional-just">Justificación (opcional)</label>
+                    <input id="f-adicional-just" type="text" maxlength="500">
+                </div>
+                <button type="button" id="btn-agregar-adicional" class="btn btn--secundario">Agregar control</button>
+            </div>
+        </fieldset>
+
+        <!-- PASO 6 -->
+        <fieldset class="paso tarjeta" data-paso="6" hidden>
+            <legend class="tarjeta__titulo">Revisión y guardado</legend>
+            <div id="revision" class="revision"></div>
+
+            <div class="campo">
+                <label for="f-observaciones">Observaciones</label>
+                <textarea id="f-observaciones" rows="3" maxlength="4000" data-campo="observaciones"></textarea>
+            </div>
+
+            <div class="acciones-linea">
+                <button type="button" id="btn-analisis-completo" class="btn btn--ia">✨ Analizar actividad completa</button>
+            </div>
+            <div id="panel-analisis-completo" class="panel-analisis" hidden></div>
+
+            <div id="errores-validacion" class="errores" role="alert" hidden></div>
+
+            <div class="acciones-guardado">
+                <button type="button" id="btn-guardar" class="btn btn--primario btn--grande">Agregar a matriz</button>
+                <button type="button" id="btn-limpiar" class="btn btn--fantasma">Limpiar formulario</button>
+            </div>
+        </fieldset>
+    </form>
+
+    <div class="navegacion-pasos">
+        <button type="button" id="btn-anterior" class="btn btn--fantasma">← Anterior</button>
+        <button type="button" id="btn-siguiente" class="btn btn--primario">Siguiente →</button>
+    </div>
+</section>
+
+<!-- ===================== VISTA MATRIZ ===================== -->
+<section id="vista-matriz" role="tabpanel" aria-labelledby="tab-matriz" class="vista" hidden>
+    <div class="contadores" id="contadores" aria-live="polite"></div>
+
+    <div class="tarjeta filtros">
+        <div class="campo campo--ancho">
+            <label for="f-buscar">Buscar en matriz</label>
+            <input id="f-buscar" type="search" placeholder="Sub área, proceso, actividad, peligro, norma, NRI, nivel…">
+        </div>
+        <details class="filtros__mas" id="filtros-mas">
+            <summary>Filtros</summary>
+            <div class="rejilla-campos">
+                <div class="campo"><label for="flt-tipo">Tipo de peligro</label><select id="flt-tipo"></select></div>
+                <div class="campo"><label for="flt-nivel">Nivel de riesgo</label>
+                    <select id="flt-nivel"><option value="">Todos</option><option>ALTO</option><option>MEDIO</option><option>BAJO</option></select></div>
+                <div class="campo"><label for="flt-subarea">Sub área</label><select id="flt-subarea"></select></div>
+                <div class="campo"><label for="flt-proceso">Proceso</label><select id="flt-proceso"></select></div>
+                <div class="campo"><label for="flt-desde">Fecha desde</label><input id="flt-desde" type="date"></div>
+                <div class="campo"><label for="flt-hasta">Fecha hasta</label><input id="flt-hasta" type="date"></div>
+            </div>
+            <button type="button" id="btn-limpiar-filtros" class="btn btn--fantasma btn--compacto">Limpiar filtros</button>
+        </details>
+        <div class="acciones-linea">
+            <button type="button" id="btn-exportar-csv" class="btn btn--secundario">Exportar CSV</button>
+            <button type="button" id="btn-imprimir" class="btn btn--secundario">Imprimir matriz</button>
+            <button type="button" id="btn-nuevo" class="btn btn--primario">＋ Nuevo registro</button>
+        </div>
+        <p id="resultado-filtro" class="ayuda" aria-live="polite"></p>
+    </div>
+
+    <div id="matriz-vacia" class="vacio" hidden>
+        <p>No hay registros en la matriz.</p>
+    </div>
+    <div class="tabla-wrap" id="tabla-wrap">
+        <table class="tabla-matriz" id="tabla-matriz">
+            <caption class="visualmente-oculto">Matriz IPER</caption>
+            <thead>
+            <tr>
+                <th scope="col">#</th><th scope="col">Sub área</th><th scope="col">Proceso</th><th scope="col">Actividad</th>
+                <th scope="col">Tareas</th><th scope="col">Tipo actividad</th><th scope="col">Modo ocurrencia</th>
+                <th scope="col">Tipo peligro</th><th scope="col">Subtipo</th><th scope="col">Daño</th>
+                <th scope="col">Norma principal</th><th scope="col">Criterio</th><th scope="col">Normas complementarias</th>
+                <th scope="col">Severidad</th><th scope="col">Frecuencia</th><th scope="col">NRI</th><th scope="col">Nivel de riesgo</th>
+                <th scope="col">Controles STOP</th><th scope="col">Fotografías</th><th scope="col">Estado sincronización</th><th scope="col">Acciones</th>
+            </tr>
+            </thead>
+            <tbody id="tabla-matriz-body"></tbody>
+        </table>
+    </div>
+    <ul id="tarjetas-matriz" class="tarjetas-matriz"></ul>
+    <div class="acciones-linea centrado">
+        <button type="button" id="btn-cargar-mas" class="btn btn--fantasma" hidden>Cargar más</button>
+    </div>
+</section>
+</main>
+
+<!-- Área de impresión: se construye al pulsar "Imprimir matriz" -->
+<section id="area-impresion" class="area-impresion" aria-hidden="true"></section>
+
+<!-- Modal genérico (bottom sheet en móvil) -->
+<dialog id="modal" class="modal" aria-labelledby="modal-titulo">
+    <div class="modal__contenido">
+        <header class="modal__cabecera">
+            <h2 id="modal-titulo" class="modal__titulo"></h2>
+            <button type="button" class="btn btn--icono" id="modal-cerrar" aria-label="Cerrar">✕</button>
+        </header>
+        <div class="modal__cuerpo" id="modal-cuerpo"></div>
+        <footer class="modal__pie" id="modal-pie"></footer>
+    </div>
+</dialog>
+
+<div id="avisos" class="avisos" aria-live="polite" aria-atomic="false"></div>
+<div id="cargando" class="cargando" hidden role="status" aria-live="assertive"><div class="cargando__caja"><span class="spinner" aria-hidden="true"></span><span id="cargando-texto">Procesando…</span></div></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
