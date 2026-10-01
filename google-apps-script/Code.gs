@@ -34,7 +34,7 @@ function respuesta_(obj) {
 /** Comparación en tiempo constante para el código de acceso. */
 function claveValida_(recibida) {
   var esperada = prop_('APP_ACCESS_KEY');
-  if (!esperada) throw new Error('El backend no tiene configurada la propiedad APP_ACCESS_KEY.');
+  if (!esperada) throw new Error('El backend aún no está inicializado: abra el editor de Apps Script, elija la función "inicializar" y pulse ▶ Ejecutar.');
   recibida = String(recibida || '');
   if (recibida.length !== esperada.length) return false;
   var diff = 0;
@@ -82,22 +82,4 @@ function doPost(e) {
   }
 }
 
-/**
- * Ejecute manualmente una vez desde el editor para autorizar permisos y crear hojas/carpeta.
- * Si no existe APP_ACCESS_KEY, genera uno aleatorio y lo muestra en el registro de ejecución.
- */
-function inicializar() {
-  hojaMatriz_();
-  hojaJson_();
-  var hojaDefecto = obtenerLibro_().getSheetByName('Hoja 1') || obtenerLibro_().getSheetByName('Sheet1');
-  if (hojaDefecto && obtenerLibro_().getSheets().length > 1 && hojaDefecto.getLastRow() === 0) obtenerLibro_().deleteSheet(hojaDefecto);
-  var carpeta = carpetaEvidencias_();
-  var props = PropertiesService.getScriptProperties();
-  if (!props.getProperty('APP_ACCESS_KEY')) {
-    props.setProperty('APP_ACCESS_KEY', 'IPER-' + Utilities.getUuid().replace(/-/g, '').slice(0, 20));
-  }
-  console.log('Hojas listas en: ' + obtenerLibro_().getUrl());
-  console.log('Carpeta de evidencias: ' + carpeta.getUrl());
-  console.log('CÓDIGO DE ACCESO para la app (⚙ Configuración): ' + props.getProperty('APP_ACCESS_KEY'));
-  if (!prop_('ANTHROPIC_API_KEY')) console.warn('ANTHROPIC_API_KEY no definida: agréguela en Configuración del proyecto → Propiedades del script para habilitar la IA.');
-}
+// La función inicializar() está en 0_Configurar.gs.
