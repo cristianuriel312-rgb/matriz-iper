@@ -4,7 +4,7 @@
  * Las llamadas al backend (Google Apps Script, IA, Drive) nunca se cachean.
  * Al publicar una nueva versión, incremente VERSION_CACHE.
  */
-const VERSION_CACHE = "iper-v1.1.0";
+const VERSION_CACHE = "iper-v1.1.1";
 const APP_SHELL = [
     "./",
     "./index.html",

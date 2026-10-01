@@ -20,7 +20,10 @@ export const CONFIG_DEFECTO = Object.freeze({
 export function obtenerConfig() {
     try {
         const guardada = JSON.parse(localStorage.getItem(CLAVE) || "{}");
-        return { ...CONFIG_DEFECTO, ...guardada };
+        const cfg = { ...CONFIG_DEFECTO, ...guardada };
+        // Una URL vacía (configuración guardada antes de existir la URL predeterminada) usa la del backend.
+        if (!String(cfg.backendUrl || "").trim()) cfg.backendUrl = CONFIG_DEFECTO.backendUrl;
+        return cfg;
     } catch {
         return { ...CONFIG_DEFECTO };
     }
