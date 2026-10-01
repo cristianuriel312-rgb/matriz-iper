@@ -83,7 +83,7 @@ var PROMPTS_IA = {
 function solicitarIA_(tipoSolicitud, contexto, imagenes) {
   var def = PROMPTS_IA[tipoSolicitud];
   if (!def) throw new Error('Tipo de solicitud de IA no soportado.');
-  if (!prop_('ANTHROPIC_API_KEY')) throw new Error('La IA no está configurada en el backend (falta ANTHROPIC_API_KEY en Propiedades del script).');
+  if (!proveedorIA_()) throw new Error('La IA no está configurada en el backend: agregue GEMINI_API_KEY (gratuita, aistudio.google.com) en Propiedades del script.');
 
   var contenido = [];
   (imagenes || []).slice(0, IA_MAX_IMAGENES).forEach(function (img) {
@@ -105,8 +105,82 @@ function solicitarIA_(tipoSolicitud, contexto, imagenes) {
   return extraerJson_(texto);
 }
 
-/** Llamada HTTP a la Messages API de Claude. */
+/**
+ * Proveedor activo: AI_PROVIDER ("gemini" | "anthropic") si se define; si no, Gemini cuando existe
+ * GEMINI_API_KEY (nivel gratuito) y Anthropic cuando existe ANTHROPIC_API_KEY.
+ */
+function proveedorIA_() {
+  var forzado = prop_('AI_PROVIDER').toLowerCase();
+  if (forzado === 'gemini' && prop_('GEMINI_API_KEY')) return 'gemini';
+  if (forzado === 'anthropic' && prop_('ANTHROPIC_API_KEY')) return 'anthropic';
+  if (prop_('GEMINI_API_KEY')) return 'gemini';
+  if (prop_('ANTHROPIC_API_KEY')) return 'anthropic';
+  return '';
+}
+
+/** Despacha al proveedor activo. contenido usa bloques {type:'image'|'text'} y se adapta para cada API. */
 function llamarProveedorIA_(sistema, contenido, esfuerzo) {
+  return proveedorIA_() === 'gemini' ? llamarGemini_(sistema, contenido) : llamarClaude_(sistema, contenido, esfuerzo);
+}
+
+/* ---------- Google Gemini (API gratuita de Google AI Studio) ---------- */
+
+var GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
+// Si el modelo configurado no existe se prueba el siguiente (los nombres de Gemini cambian con nuevas versiones).
+var GEMINI_MODELOS = ['gemini-flash-latest', 'gemini-2.5-flash'];
+
+function modelosGemini_() {
+  var configurado = prop_('GEMINI_MODEL');
+  return configurado ? [configurado].concat(GEMINI_MODELOS) : GEMINI_MODELOS;
+}
+
+function llamarGemini_(sistema, contenido) {
+  var partes = contenido.map(function (b) {
+    return b.type === 'image'
+      ? { inline_data: { mime_type: b.source.media_type, data: b.source.data } }
+      : { text: b.text };
+  });
+  var cuerpo = {
+    systemInstruction: { parts: [{ text: sistema }] },
+    contents: [{ role: 'user', parts: partes }],
+    generationConfig: { responseMimeType: 'application/json', temperature: 0.3, maxOutputTokens: 8192 }
+  };
+  var modelos = modelosGemini_();
+  var ultimoError = '';
+  for (var i = 0; i < modelos.length; i++) {
+    var resp = UrlFetchApp.fetch(GEMINI_URL + encodeURIComponent(modelos[i]) + ':generateContent', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-goog-api-key': prop_('GEMINI_API_KEY') },
+      payload: JSON.stringify(cuerpo),
+      muteHttpExceptions: true
+    });
+    var codigo = resp.getResponseCode();
+    var datos;
+    try { datos = JSON.parse(resp.getContentText()); } catch (e) { datos = null; }
+    var detalle = datos && datos.error && datos.error.message ? datos.error.message : 'sin detalle';
+    if (codigo === 404) { ultimoError = detalle; continue; } // modelo no disponible: probar el siguiente
+    if (codigo === 400 && /API key not valid|API_KEY_INVALID/i.test(detalle)) throw new Error('La API key de Gemini no es válida. Revise GEMINI_API_KEY en Propiedades del script.');
+    if (codigo === 403) throw new Error('La API key de Gemini no tiene permiso (¿API deshabilitada o clave restringida?): ' + detalle);
+    if (codigo === 429) throw new Error('Se alcanzó el límite gratuito de Gemini. Espere un minuto (o hasta mañana si es el límite diario) e intente de nuevo.');
+    if (codigo !== 200 || !datos) throw new Error('Error de Gemini (HTTP ' + codigo + '): ' + detalle);
+    if (datos.promptFeedback && datos.promptFeedback.blockReason) throw new Error('Gemini bloqueó la solicitud (' + datos.promptFeedback.blockReason + '). Reformule e intente de nuevo.');
+    var cand = (datos.candidates || [])[0];
+    if (!cand) throw new Error('Gemini no devolvió respuesta.');
+    if (cand.finishReason === 'MAX_TOKENS') throw new Error('La respuesta de IA quedó incompleta. Reduzca el contexto e intente de nuevo.');
+    if (cand.finishReason === 'SAFETY') throw new Error('Gemini bloqueó la respuesta por seguridad. Reformule e intente de nuevo.');
+    var texto = ((cand.content && cand.content.parts) || []).filter(function (p) { return p.text && !p.thought; })
+      .map(function (p) { return p.text; }).join('');
+    if (!texto) throw new Error('Gemini no devolvió contenido.');
+    return texto;
+  }
+  throw new Error('Ningún modelo de Gemini disponible (' + modelos.join(', ') + '): ' + ultimoError);
+}
+
+/* ---------- Anthropic Claude (API de pago) ---------- */
+
+/** Llamada HTTP a la Messages API de Claude. */
+function llamarClaude_(sistema, contenido, esfuerzo) {
   var cuerpo = {
     model: prop_('AI_MODEL') || IA_MODELO_PREDETERMINADO,
     max_tokens: 8000,
@@ -163,11 +237,10 @@ function diagnosticoIA_() {
   var cache = CacheService.getScriptCache();
   if (cache.get('diag_ia')) return { ok: false, error: 'Espere 2 minutos entre diagnósticos.' };
   cache.put('diag_ia', '1', 120);
-  var headers = { 'x-api-key': prop_('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01' };
-  var modelo = prop_('AI_MODEL') || IA_MODELO_PREDETERMINADO;
-  var out = { ok: true, longitudClave: prop_('ANTHROPIC_API_KEY').length, prefijoValido: /^sk-ant-/.test(prop_('ANTHROPIC_API_KEY')), espacios: /\s/.test(prop_('ANTHROPIC_API_KEY')) };
-  var m = UrlFetchApp.fetch('https://api.anthropic.com/v1/models/' + modelo, { headers: headers, muteHttpExceptions: true });
-  out.modelo = { http: m.getResponseCode(), error: errorApi_(m) };
+  var proveedor = proveedorIA_();
+  var clave = proveedor === 'gemini' ? prop_('GEMINI_API_KEY') : prop_('ANTHROPIC_API_KEY');
+  var out = { ok: true, proveedor: proveedor || 'ninguno', longitudClave: clave.length, espacios: /\s/.test(clave) };
+  if (!proveedor) return out;
   var t0 = Date.now();
   try {
     llamarProveedorIA_('Responde solo con {"ok":true}', [{ type: 'text', text: 'Prueba' }], 'low');

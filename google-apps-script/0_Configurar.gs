@@ -19,9 +19,9 @@ function inicializar() {
   if (hojaDefecto && libro.getSheets().length > 1 && hojaDefecto.getLastRow() === 0) libro.deleteSheet(hojaDefecto);
   console.log('✔ Hojas listas en: ' + libro.getUrl());
   console.log('✔ Carpeta de evidencias: ' + carpetaEvidencias_().getUrl());
-  console.log(prop_('ANTHROPIC_API_KEY')
+  console.log(proveedorIA_()
     ? '✔ IA configurada.'
-    : '⚠ IA sin configurar: agregue ANTHROPIC_API_KEY en Configuración del proyecto → Propiedades del script.');
+    : '⚠ IA sin configurar: agregue GEMINI_API_KEY (gratis en aistudio.google.com) en Configuración del proyecto → Propiedades del script.');
 }
 
 /** Muestra de nuevo el código de acceso si lo perdió. */

@@ -48,8 +48,8 @@ function doGet(e) {
   return respuesta_({
     ok: true, servicio: 'Matriz IPER', version: CONFIG.VERSION,
     inicializado: Boolean(PropertiesService.getScriptProperties().getProperty('APP_ACCESS_KEY')),
-    iaConfigurada: Boolean(prop_('ANTHROPIC_API_KEY')),
-    modeloIA: prop_('AI_MODEL') || IA_MODELO_PREDETERMINADO
+    iaConfigurada: Boolean(proveedorIA_()), proveedorIA: proveedorIA_() || 'ninguno',
+    modeloIA: proveedorIA_() === 'gemini' ? modelosGemini_()[0] : (prop_('AI_MODEL') || IA_MODELO_PREDETERMINADO)
   });
 }
 
@@ -64,7 +64,7 @@ function doPost(e) {
       case 'ping':
         return respuesta_({
           ok: true, version: CONFIG.VERSION, hoja: CONFIG.HOJA_MATRIZ,
-          carpeta: carpetaEvidencias_().getName(), iaConfigurada: Boolean(prop_('ANTHROPIC_API_KEY')),
+          carpeta: carpetaEvidencias_().getName(), iaConfigurada: Boolean(proveedorIA_()), proveedorIA: proveedorIA_() || 'ninguno',
           libro: obtenerLibro_().getName()
         });
       case 'guardarRegistro':
