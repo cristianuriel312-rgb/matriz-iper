@@ -34,6 +34,12 @@ Aplicación web progresiva (PWA), *mobile-first*, para centros de trabajo en Mé
 
 Las capas están separadas (UI → Servicios → Datos) y usan módulos ES nativos sin dependencias ni compilación, por lo que pueden migrarse a React/Vue/Angular o a un backend dedicado reemplazando solo la capa correspondiente.
 
+## En producción
+
+- App: https://cristianuriel312-rgb.github.io/matriz-iper/ (GitHub Pages)
+- Backend: proyecto de Apps Script "Matriz IPER Backend" desplegado como Web App; datos en la carpeta de Drive "Matriz IPER".
+- Para actualizar el backend: `cd google-apps-script && npx @google/clasp push && npx @google/clasp create-deployment --deploymentId <ID>` (mantiene la misma URL).
+
 ## Ejecutar localmente
 
 Los módulos ES y el service worker requieren servirse por HTTP (no abrir `index.html` con doble clic):
@@ -51,7 +57,7 @@ Abra `http://localhost:8080`. Pruebas funcionales: `http://localhost:8080/tests/
 | Dónde | Qué | Notas |
 |---|---|---|
 | Propiedades del script (Apps Script) | `APP_ACCESS_KEY` | Código de acceso compartido (obligatorio) |
-| Propiedades del script | `ANTHROPIC_API_KEY` | Habilita las funciones ✨ de IA |
+| Propiedades del script | `GEMINI_API_KEY` | Habilita las funciones ✨ de IA (gratis en aistudio.google.com/apikey); alternativa de pago: `ANTHROPIC_API_KEY` |
 | Propiedades del script | `AI_MODEL`, `SPREADSHEET_ID`, `DRIVE_FOLDER_ID` | Opcionales |
 | App → ⚙ Configuración | URL del Web App (`…/exec`), código de acceso, nombre de usuario | Se guarda solo en el dispositivo |
 
@@ -68,7 +74,7 @@ Siga **[google-apps-script/README.md](google-apps-script/README.md)**. En resume
 ## Integración de IA
 
 - Frontend: `js/ai-service.js` → `solicitarIA({tipoSolicitud, contexto, imagenes})` con los tipos `MEJORAR_MODO_OCURRENCIA`, `SUGERIR_CONTROLES_STOP`, `ANALIZAR_FOTOGRAFIA`, `ANALIZAR_ACTIVIDAD_COMPLETA`.
-- Backend: `google-apps-script/IA.gs` contiene los prompts internos y la llamada a la API de Claude (`claude-opus-5-5`, con respaldo automático del servidor si una solicitud es declinada por política). Para usar otro proveedor reemplace `llamarProveedorIA_()`.
+- Backend: `google-apps-script/IA.gs` contiene los prompts internos y llama a **Google Gemini** (API gratuita, con reintento y cambio automático de modelo si está saturado) o a **Claude** (`claude-opus-5-5`, de pago) según la clave configurada.
 - La IA **nunca** reemplaza texto, agrega peligros ni selecciona controles automáticamente: todo pasa por aprobación (Aceptar / Editar antes de aceptar / Cancelar; Confirmar / Descartar / Agregar como peligro; casillas sin marcar). Las sugerencias de tipo/subtipo/daño se validan contra el catálogo.
 
 ## Desplegar como PWA
@@ -100,7 +106,7 @@ Siga **[google-apps-script/README.md](google-apps-script/README.md)**. En resume
 
 - **Autenticación:** `APP_ACCESS_KEY` es compartida; no hay inicio de sesión individual ni permisos por rol. Para eso se requiere un backend con OAuth.
 - **Fotos entre dispositivos:** las miniaturas se ven en el dispositivo que las capturó; en otros dispositivos se muestran como enlace a Drive (requiere acceso compartido a la carpeta).
-- **IA:** requiere conexión y `ANTHROPIC_API_KEY`; tiene costo por uso. Los tiempos de respuesta dependen del proveedor y de los límites de Apps Script. La calidad debe revisarse siempre por el especialista.
+- **IA:** requiere conexión y `GEMINI_API_KEY` (gratuita, con límites por minuto/día; en horas pico puede tardar 15–40 s o pedir reintentar). Los tiempos de respuesta dependen del proveedor y de los límites de Apps Script. La calidad debe revisarse siempre por el especialista.
 - **Conflictos:** se resuelven a nivel de registro completo (no hay fusión campo por campo).
 - **Almacenamiento local:** limitado por el navegador; Safari puede depurar datos de sitios no usados en semanas si la app no está instalada en inicio. Sincronice con regularidad (o use ⚙ → Respaldo JSON).
 - **Cámara:** `capture="environment"` abre la cámara en Android/iOS; en escritorio abre el selector de archivos.

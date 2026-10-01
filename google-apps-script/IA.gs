@@ -127,7 +127,10 @@ function llamarProveedorIA_(sistema, contenido, esfuerzo) {
 
 var GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
 // Si el modelo configurado no existe se prueba el siguiente (los nombres de Gemini cambian con nuevas versiones).
-var GEMINI_MODELOS = ['gemini-flash-latest', 'gemini-2.5-flash'];
+// También se usan como respaldo cuando un modelo está saturado (HTTP 503/500).
+var GEMINI_MODELOS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite'];
+
+var ultimoModeloGemini_ = '';
 
 function modelosGemini_() {
   var configurado = prop_('GEMINI_MODEL');
@@ -147,19 +150,27 @@ function llamarGemini_(sistema, contenido) {
   };
   var modelos = modelosGemini_();
   var ultimoError = '';
+  var saturados = 0;
   for (var i = 0; i < modelos.length; i++) {
-    var resp = UrlFetchApp.fetch(GEMINI_URL + encodeURIComponent(modelos[i]) + ':generateContent', {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { 'x-goog-api-key': prop_('GEMINI_API_KEY') },
-      payload: JSON.stringify(cuerpo),
-      muteHttpExceptions: true
-    });
-    var codigo = resp.getResponseCode();
-    var datos;
-    try { datos = JSON.parse(resp.getContentText()); } catch (e) { datos = null; }
-    var detalle = datos && datos.error && datos.error.message ? datos.error.message : 'sin detalle';
+    if (i > 0 && modelos.indexOf(modelos[i]) < i) continue; // modelo repetido (GEMINI_MODEL ya en la lista)
+    var resp = null, codigo = 0, datos = null, detalle = '';
+    // Hasta 2 intentos por modelo cuando está saturado; luego se prueba el siguiente modelo.
+    for (var intento = 0; intento < 2; intento++) {
+      resp = UrlFetchApp.fetch(GEMINI_URL + encodeURIComponent(modelos[i]) + ':generateContent', {
+        method: 'post',
+        contentType: 'application/json',
+        headers: { 'x-goog-api-key': prop_('GEMINI_API_KEY') },
+        payload: JSON.stringify(cuerpo),
+        muteHttpExceptions: true
+      });
+      codigo = resp.getResponseCode();
+      try { datos = JSON.parse(resp.getContentText()); } catch (e) { datos = null; }
+      detalle = datos && datos.error && datos.error.message ? datos.error.message : 'sin detalle';
+      if (codigo !== 503 && codigo !== 500) break;
+      if (intento === 0) Utilities.sleep(1500);
+    }
     if (codigo === 404) { ultimoError = detalle; continue; } // modelo no disponible: probar el siguiente
+    if (codigo === 503 || codigo === 500) { saturados++; ultimoError = detalle; continue; } // saturado: probar otro modelo
     if (codigo === 400 && /API key not valid|API_KEY_INVALID/i.test(detalle)) throw new Error('La API key de Gemini no es válida. Revise GEMINI_API_KEY en Propiedades del script.');
     if (codigo === 403) throw new Error('La API key de Gemini no tiene permiso (¿API deshabilitada o clave restringida?): ' + detalle);
     if (codigo === 429) throw new Error('Se alcanzó el límite gratuito de Gemini. Espere un minuto (o hasta mañana si es el límite diario) e intente de nuevo.');
@@ -172,8 +183,10 @@ function llamarGemini_(sistema, contenido) {
     var texto = ((cand.content && cand.content.parts) || []).filter(function (p) { return p.text && !p.thought; })
       .map(function (p) { return p.text; }).join('');
     if (!texto) throw new Error('Gemini no devolvió contenido.');
+    ultimoModeloGemini_ = modelos[i];
     return texto;
   }
+  if (saturados) throw new Error('Los servidores gratuitos de Gemini están saturados en este momento. Intente de nuevo en uno o dos minutos.');
   throw new Error('Ningún modelo de Gemini disponible (' + modelos.join(', ') + '): ' + ultimoError);
 }
 
@@ -227,33 +240,6 @@ function extraerJson_(texto) {
   if (ini < 0 || fin <= ini) throw new Error('La respuesta de IA no tiene el formato esperado.');
   try { return JSON.parse(limpio.substring(ini, fin + 1)); }
   catch (e) { throw new Error('La respuesta de IA no es JSON válido.'); }
-}
-
-/**
- * Diagnóstico temporal: verifica la API key y una llamada mínima. Devuelve solo códigos y mensajes de error.
- * Limitado a una ejecución cada 2 minutos para evitar abuso.
- */
-function diagnosticoIA_() {
-  var cache = CacheService.getScriptCache();
-  if (cache.get('diag_ia')) return { ok: false, error: 'Espere 2 minutos entre diagnósticos.' };
-  cache.put('diag_ia', '1', 120);
-  var proveedor = proveedorIA_();
-  var clave = proveedor === 'gemini' ? prop_('GEMINI_API_KEY') : prop_('ANTHROPIC_API_KEY');
-  var out = { ok: true, proveedor: proveedor || 'ninguno', longitudClave: clave.length, espacios: /\s/.test(clave) };
-  if (!proveedor) return out;
-  var t0 = Date.now();
-  try {
-    llamarProveedorIA_('Responde solo con {"ok":true}', [{ type: 'text', text: 'Prueba' }], 'low');
-    out.mensaje = { ok: true, ms: Date.now() - t0 };
-  } catch (err) {
-    out.mensaje = { ok: false, ms: Date.now() - t0, error: String(err.message || err) };
-  }
-  return out;
-}
-
-function errorApi_(resp) {
-  try { var d = JSON.parse(resp.getContentText()); return d.error ? d.error.type + ': ' + d.error.message : null; }
-  catch (e) { return null; }
 }
 
 /** Prueba manual desde el editor de Apps Script. */

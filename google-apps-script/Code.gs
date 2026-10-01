@@ -8,8 +8,10 @@
  *   APP_ACCESS_KEY     (obligatoria) Código de acceso compartido que los usuarios capturan en la app.
  *   SPREADSHEET_ID     (opcional)    ID del Google Sheets. Si se omite se usa la hoja vinculada al script.
  *   DRIVE_FOLDER_ID    (opcional)    ID de carpeta de evidencias. Si se omite se crea "Evidencias_Matriz_IPER".
- *   ANTHROPIC_API_KEY  (opcional)    API key del proveedor de IA. Sin ella, las funciones de IA quedan deshabilitadas.
- *   AI_MODEL           (opcional)    Modelo de IA. Predeterminado: claude-opus-5-5.
+ *   GEMINI_API_KEY     (recomendada) API key GRATUITA de Google AI Studio (aistudio.google.com/apikey).
+ *   ANTHROPIC_API_KEY  (opcional)    API key de pago de Anthropic (Claude). Se usa si no hay GEMINI_API_KEY.
+ *   AI_PROVIDER        (opcional)    'gemini' o 'anthropic' para forzar un proveedor.
+ *   GEMINI_MODEL / AI_MODEL (opcional) Modelo de Gemini / Claude.
  *
  * Nunca coloque secretos en el código fuente ni en el frontend.
  */
@@ -42,8 +44,7 @@ function claveValida_(recibida) {
   return diff === 0;
 }
 
-function doGet(e) {
-  if (e && e.parameter && e.parameter.diag === 'ia') return respuesta_(diagnosticoIA_());
+function doGet() {
   // No expone datos ni secretos: solo estado sí/no para diagnóstico.
   return respuesta_({
     ok: true, servicio: 'Matriz IPER', version: CONFIG.VERSION,

@@ -7,7 +7,7 @@ Este backend conecta la PWA con **Google Sheets** (registros), **Google Drive** 
 | `Code.gs` | Enrutador `doPost`, verificación del código de acceso, `inicializar()` |
 | `Sheets.gs` | Hojas `Matriz_IPER` (vista tabular, 1 fila por peligro) y `Registros_JSON` (registro completo, versión para conflictos) |
 | `Drive.gs` | Subida idempotente de fotos a `Evidencias_Matriz_IPER` (acceso restringido) |
-| `IA.gs` | Prompts internos y llamada a la API de Claude (Messages API) |
+| `IA.gs` | Prompts internos y llamada a Gemini (gratis) o Claude (de pago) |
 | `appsscript.json` | Manifiesto: zona horaria, permisos y configuración del Web App |
 
 ## Despliegue paso a paso
@@ -51,8 +51,9 @@ Este backend conecta la PWA con **Google Sheets** (registros), **Google Drive** 
 - Las celdas se protegen contra inyección de fórmulas (`=`, `+`, `-`, `@`).
 - Se usa `LockService` para evitar escrituras concurrentes.
 - Cuotas de Apps Script (cuenta gratuita): ~20,000 llamadas `UrlFetch`/día, 6 min por ejecución. Las llamadas de IA usan esfuerzo bajo/medio para responder en segundos; si una respuesta excede los límites de tiempo, reintente.
-- Si el proveedor de IA declina una solicitud por política de seguridad, se reintenta automáticamente con el modelo de respaldo recomendado (`fallbacks: "default"`).
+- Gemini (plan gratuito): si un modelo está saturado (HTTP 503) se reintenta y se cambia automáticamente a otro modelo Flash/Flash-Lite. En el plan gratuito Google puede usar el contenido enviado para mejorar sus productos; active facturación en el proyecto de AI Studio si la información es confidencial.
+- Claude: si una solicitud es declinada por política de seguridad, se reintenta con el modelo de respaldo recomendado (`fallbacks: "default"`).
 
 ## Cambiar de proveedor de IA
 
-Solo reemplace `llamarProveedorIA_(sistema, contenido, esfuerzo)` en `IA.gs` para que devuelva el texto de la respuesta. El contrato con el frontend (`{tipoSolicitud, contexto, imagenes}` → objeto JSON) no cambia.
+Agregue una función como `llamarGemini_` / `llamarClaude_` en `IA.gs` y selecciónela en `llamarProveedorIA_()`. El contrato con el frontend (`{tipoSolicitud, contexto, imagenes}` → objeto JSON) no cambia.
