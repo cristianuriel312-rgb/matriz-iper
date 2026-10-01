@@ -21,9 +21,11 @@ Este backend conecta la PWA con **Google Sheets** (registros), **Google Drive** 
 
    | Propiedad | Obligatoria | Valor |
    |---|---|---|
-   | `APP_ACCESS_KEY` | Sí | Código de acceso largo y aleatorio (p. ej. 32+ caracteres). Compártalo solo con usuarios autorizados. |
-   | `ANTHROPIC_API_KEY` | Para IA | API key de [console.anthropic.com](https://console.anthropic.com). Sin ella la app funciona, pero los botones ✨ responderán "IA no configurada". |
-   | `AI_MODEL` | No | Predeterminado `claude-opus-5-5`. |
+   | `APP_ACCESS_KEY` | Sí (la genera `inicializar`) | Código de acceso aleatorio. Compártalo solo con usuarios autorizados. |
+   | `GEMINI_API_KEY` | Para IA (recomendada) | API key **gratuita** de [aistudio.google.com/apikey](https://aistudio.google.com/apikey). Sin clave de IA la app funciona, pero los botones ✨ responderán "IA no configurada". |
+   | `ANTHROPIC_API_KEY` | No | Alternativa de pago (Claude, console.anthropic.com). Se usa solo si no hay `GEMINI_API_KEY`. |
+   | `AI_PROVIDER` | No | `gemini` o `anthropic` para forzar proveedor. |
+   | `GEMINI_MODEL` / `AI_MODEL` | No | Modelo de Gemini (predeterminado `gemini-flash-latest`, con respaldo automático) / de Claude (`claude-opus-5-5`). |
    | `SPREADSHEET_ID` | No | Solo si el script **no** está vinculado a la hoja. |
    | `DRIVE_FOLDER_ID` | No | Carpeta existente para evidencias. Si se omite, se crea `Evidencias_Matriz_IPER` y se guarda su ID automáticamente. |
 
