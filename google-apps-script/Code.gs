@@ -42,9 +42,15 @@ function claveValida_(recibida) {
   return diff === 0;
 }
 
-function doGet() {
-  // No expone datos: solo confirma que el servicio está activo.
-  return respuesta_({ ok: true, servicio: 'Matriz IPER', version: CONFIG.VERSION });
+function doGet(e) {
+  if (e && e.parameter && e.parameter.diag === 'ia') return respuesta_(diagnosticoIA_());
+  // No expone datos ni secretos: solo estado sí/no para diagnóstico.
+  return respuesta_({
+    ok: true, servicio: 'Matriz IPER', version: CONFIG.VERSION,
+    inicializado: Boolean(PropertiesService.getScriptProperties().getProperty('APP_ACCESS_KEY')),
+    iaConfigurada: Boolean(prop_('ANTHROPIC_API_KEY')),
+    modeloIA: prop_('AI_MODEL') || IA_MODELO_PREDETERMINADO
+  });
 }
 
 function doPost(e) {

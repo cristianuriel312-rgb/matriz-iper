@@ -132,6 +132,8 @@ function llamarProveedorIA_(sistema, contenido, esfuerzo) {
   try { datos = JSON.parse(resp.getContentText()); } catch (e) { datos = null; }
   if (codigo !== 200 || !datos) {
     var detalle = datos && datos.error && datos.error.message ? datos.error.message : 'sin detalle';
+    if (codigo === 401) throw new Error('La API key de IA configurada en el backend no es válida. Revise ANTHROPIC_API_KEY en Propiedades del script (debe iniciar con sk-ant-).');
+    if (codigo === 402 || /credit balance/i.test(detalle)) throw new Error('La cuenta de IA no tiene saldo disponible. Agregue créditos en console.anthropic.com → Billing.');
     if (codigo === 429 || codigo === 529) throw new Error('El servicio de IA está saturado. Intente de nuevo en unos momentos.');
     throw new Error('Error del proveedor de IA (HTTP ' + codigo + '): ' + detalle);
   }
@@ -151,6 +153,34 @@ function extraerJson_(texto) {
   if (ini < 0 || fin <= ini) throw new Error('La respuesta de IA no tiene el formato esperado.');
   try { return JSON.parse(limpio.substring(ini, fin + 1)); }
   catch (e) { throw new Error('La respuesta de IA no es JSON válido.'); }
+}
+
+/**
+ * Diagnóstico temporal: verifica la API key y una llamada mínima. Devuelve solo códigos y mensajes de error.
+ * Limitado a una ejecución cada 2 minutos para evitar abuso.
+ */
+function diagnosticoIA_() {
+  var cache = CacheService.getScriptCache();
+  if (cache.get('diag_ia')) return { ok: false, error: 'Espere 2 minutos entre diagnósticos.' };
+  cache.put('diag_ia', '1', 120);
+  var headers = { 'x-api-key': prop_('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01' };
+  var modelo = prop_('AI_MODEL') || IA_MODELO_PREDETERMINADO;
+  var out = { ok: true, longitudClave: prop_('ANTHROPIC_API_KEY').length, prefijoValido: /^sk-ant-/.test(prop_('ANTHROPIC_API_KEY')), espacios: /\s/.test(prop_('ANTHROPIC_API_KEY')) };
+  var m = UrlFetchApp.fetch('https://api.anthropic.com/v1/models/' + modelo, { headers: headers, muteHttpExceptions: true });
+  out.modelo = { http: m.getResponseCode(), error: errorApi_(m) };
+  var t0 = Date.now();
+  try {
+    llamarProveedorIA_('Responde solo con {"ok":true}', [{ type: 'text', text: 'Prueba' }], 'low');
+    out.mensaje = { ok: true, ms: Date.now() - t0 };
+  } catch (err) {
+    out.mensaje = { ok: false, ms: Date.now() - t0, error: String(err.message || err) };
+  }
+  return out;
+}
+
+function errorApi_(resp) {
+  try { var d = JSON.parse(resp.getContentText()); return d.error ? d.error.type + ': ' + d.error.message : null; }
+  catch (e) { return null; }
 }
 
 /** Prueba manual desde el editor de Apps Script. */
