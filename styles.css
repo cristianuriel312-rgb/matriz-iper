@@ -417,3 +417,19 @@ fieldset.tarjeta { border: 1px solid var(--gris-300); }
     .nivel-BAJO, .nivel-MEDIO, .nivel-ALTO { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .impresion__aviso { font-size: 7pt; font-style: italic; color: #555; }
 }
+
+/* ---------- Peligros propuestos por IA ---------- */
+.sugerencia--peligro label { display: grid; gap: .25rem; }
+.sugerencia__titulo { overflow-wrap: anywhere; }
+.sugerencia__detalle { display: grid; grid-template-columns: max-content 1fr; gap: .1rem .6rem; margin: .2rem 0 0; font-size: .85rem; }
+.sugerencia__detalle dt { font-weight: 600; color: var(--gris-700); }
+.sugerencia__detalle dd { margin: 0; overflow-wrap: anywhere; }
+.sugerencia input:disabled + label { opacity: .7; }
+.prioridad--Crítica { background: var(--alto); color: var(--blanco); }
+.prioridad--Alta { background: var(--alto-fondo); color: var(--alto); }
+.prioridad--Media { background: var(--medio-fondo); color: var(--medio); }
+.prioridad--Baja { background: var(--bajo-fondo); color: var(--bajo); }
+.certeza--Confirmado { background: var(--bajo-fondo); color: var(--bajo); }
+.certeza--Inferible { background: var(--azul-claro); color: var(--azul-oscuro); }
+.certeza--Condicionado { background: var(--medio-fondo); color: var(--medio); }
+@media (max-width: 420px) { .sugerencia__detalle { grid-template-columns: 1fr; } }

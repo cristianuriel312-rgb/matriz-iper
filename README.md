@@ -73,7 +73,8 @@ Siga **[google-apps-script/README.md](google-apps-script/README.md)**. En resume
 
 ## Integración de IA
 
-- Frontend: `js/ai-service.js` → `solicitarIA({tipoSolicitud, contexto, imagenes})` con los tipos `MEJORAR_MODO_OCURRENCIA`, `SUGERIR_CONTROLES_STOP`, `ANALIZAR_FOTOGRAFIA`, `ANALIZAR_ACTIVIDAD_COMPLETA`.
+- Frontend: `js/ai-service.js` → `solicitarIA({tipoSolicitud, contexto, imagenes})` con los tipos `MEJORAR_MODO_OCURRENCIA`, `IDENTIFICAR_PELIGROS`, `SUGERIR_CONTROLES_STOP`, `ANALIZAR_FOTOGRAFIA`, `ANALIZAR_ACTIVIDAD_COMPLETA`.
+- Criterios técnicos de la IA (en `IA.gs`): modo de operación PRO en 5 etapas, comprensión del proceso, reconstrucción física de la tarea, análisis de desviaciones y de energías peligrosas, LOTOTO (Lock Out – Tag Out – Try Out) con Try Out seguro, condiciones que no constituyen aislamiento (STOP, HMI, selector OFF…), 3–10 peligros por modo de ocurrencia con fuente/exposición/mecanismo, priorización y nivel de certeza (Confirmado / Inferible / Condicionado). Nunca se inventan valores (pesos, presiones, voltajes, datos de HDS…).
 - Backend: `google-apps-script/IA.gs` contiene los prompts internos y llama a **Google Gemini** (API gratuita, con reintento y cambio automático de modelo si está saturado) o a **Claude** (`claude-opus-5-5`, de pago) según la clave configurada.
 - La IA **nunca** reemplaza texto, agrega peligros ni selecciona controles automáticamente: todo pasa por aprobación (Aceptar / Editar antes de aceptar / Cancelar; Confirmar / Descartar / Agregar como peligro; casillas sin marcar). Las sugerencias de tipo/subtipo/daño se validan contra el catálogo.
 

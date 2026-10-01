@@ -25,7 +25,7 @@ import {
 import { comprimirImagen, formatoPermitido } from "./js/imagen.js";
 import { filasMatriz, generarCSV, descargarArchivo, conteoSTOP } from "./js/exportar.js";
 
-const VERSION_APP = "1.1.2";
+const VERSION_APP = "1.2.0";
 const PASOS = [
     { n: 1, nombre: "Actividad" },
     { n: 2, nombre: "Modo de ocurrencia y fotografías" },
@@ -309,6 +309,7 @@ function enlazarEventos() {
         aviso(`Peligro ${estado.peligroIdx + 1} agregado.`);
     });
     $("#btn-eliminar-peligro").addEventListener("click", eliminarPeligroActivo);
+    $("#btn-identificar-peligros").addEventListener("click", e => conBoton(e.currentTarget, identificarPeligrosIA));
 
     // Evaluación
     $("#f-severidad").addEventListener("change", e => actualizarEvaluacion(e.target.value, peligroActivo().evaluacionInicial.frecuencia?.codigo));
@@ -998,6 +999,115 @@ function agregarPeligroSugerido(tipo, subtipo, dano) {
 }
 
 /* =========================================================
+   IA: identificación de peligros (3–10 por modo de ocurrencia)
+   ========================================================= */
+
+const ORDEN_PRIORIDAD = { "Crítica": 0, "Alta": 1, "Media": 2, "Baja": 3 };
+
+/** Normaliza un peligro propuesto por la IA y lo valida contra el catálogo. */
+function normalizarPeligroIA(pp) {
+    const v = validarSugerenciaCatalogo(pp?.tipo, pp?.subtipo, pp?.dano);
+    const certeza = canonico(["Confirmado", "Inferible", "Condicionado"], pp?.certeza) || "Inferible";
+    const prioridad = canonico(Object.keys(ORDEN_PRIORIDAD), pp?.prioridad) || "Media";
+    return {
+        id: uuid(), ...v,
+        valido: Boolean(v.tipo && v.subtipo && v.dano),
+        descripcionLibre: String(pp?.descripcionLibre || ""),
+        fuente: String(pp?.fuente || ""), exposicion: String(pp?.exposicion || ""), mecanismo: String(pp?.mecanismo || ""),
+        partesCuerpo: String(pp?.partesCuerpo || ""), certeza, condicion: String(pp?.condicion || ""), prioridad,
+        justificacion: String(pp?.justificacion || "")
+    };
+}
+
+function yaRegistrado(p) {
+    return estado.registro.peligros.some(x => x.tipo === p.tipo && x.subtipo === p.subtipo && x.dano === p.dano);
+}
+
+/** Tarjeta de un peligro propuesto por IA (con casilla si es agregable). */
+function tarjetaPeligroIA(pp, prefijo) {
+    const id = `${prefijo}-${pp.id}`;
+    const duplicado = pp.valido && yaRegistrado(pp);
+    const titulo = pp.valido ? `${pp.tipo} — ${pp.subtipo} — ${pp.dano}` : (pp.descripcionLibre || [pp.tipo, pp.subtipo, pp.dano].filter(Boolean).join(" — ") || "Peligro");
+    const det = [
+        ["Fuente", pp.fuente], ["Exposición", pp.exposicion], ["Mecanismo de lesión", pp.mecanismo],
+        ["Partes del cuerpo", pp.partesCuerpo], ["Condición", pp.certeza === "Condicionado" ? pp.condicion : ""], ["Justificación", pp.justificacion]
+    ].filter(([, v]) => v);
+    return h("div", { class: "sugerencia sugerencia--peligro" },
+        h("input", { type: "checkbox", id, "data-peligro-ia": pp.id, disabled: !pp.valido || duplicado }),
+        h("label", { for: id },
+            h("span", { class: "control__meta" },
+                h("span", { class: `etiqueta prioridad--${pp.prioridad}` }, `Prioridad ${pp.prioridad}`),
+                h("span", { class: `etiqueta certeza--${pp.certeza}` }, pp.certeza),
+                !pp.valido ? h("span", { class: "etiqueta" }, "Fuera de catálogo: agréguelo manualmente") : null,
+                duplicado ? h("span", { class: "etiqueta" }, "Ya registrado") : null),
+            h("strong", { class: "sugerencia__titulo" }, titulo),
+            det.length ? h("dl", { class: "sugerencia__detalle" }, det.flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])) : null));
+}
+
+async function identificarPeligrosIA() {
+    const r = estado.registro;
+    if (!r.modoOcurrencia.texto.trim()) { aviso("Describa primero el modo de ocurrencia (paso 2).", "alerta"); return; }
+    let res;
+    try {
+        mostrarCargando("La IA está analizando el proceso e identificando peligros…");
+        const imagenes = await prepararImagenes(r.fotografias, 2);
+        res = await solicitarIA({ tipoSolicitud: TIPOS_SOLICITUD_IA.IDENTIFICAR_PELIGROS, contexto: contextoCompleto(r), imagenes });
+    } catch (e) { manejarErrorIA(e); return; }
+    finally { ocultarCargando(); }
+    const peligros = (Array.isArray(res?.peligros) ? res.peligros : []).slice(0, 10).map(normalizarPeligroIA)
+        .sort((a, b) => ORDEN_PRIORIDAD[a.prioridad] - ORDEN_PRIORIDAD[b.prioridad]);
+    renderPeligrosIA({ peligros, energias: res?.energias, brechas: res?.brechas, notas: res?.notas });
+}
+
+function renderPeligrosIA(datos) {
+    const panel = vaciar($("#panel-peligros-ia"));
+    panel.hidden = false;
+    panel.append(h("h4", {}, `✨ Peligros identificados por IA (${datos.peligros.length})`),
+        h("p", { class: "ayuda" }, "Propuestas ordenadas por prioridad. Ninguna se agrega automáticamente: marque las que correspondan. Cada una se agregará como una fila independiente de la matriz."));
+    const energias = (Array.isArray(datos.energias) ? datos.energias : []).filter(e => e?.energia);
+    if (energias.length) {
+        panel.append(h("h4", {}, "Energías identificadas"),
+            h("ul", { class: "lista-simple" }, energias.map(e => h("li", {}, `${e.energia}${e.fuente ? ` — ${e.fuente}` : ""}${e.certeza ? ` (${e.certeza})` : ""}`))));
+    }
+    const brechas = (Array.isArray(datos.brechas) ? datos.brechas : []).filter(Boolean);
+    if (brechas.length) panel.append(h("h4", {}, "Brechas detectadas"), listaTexto(brechas));
+    if (datos.notas) panel.append(h("p", { class: "ayuda" }, `Notas: ${datos.notas}`));
+
+    if (!datos.peligros.length) panel.append(h("p", {}, "La IA no identificó peligros con la información disponible. Amplíe el modo de ocurrencia."));
+    const lista = h("div");
+    datos.peligros.forEach(pp => lista.append(tarjetaPeligroIA(pp, "pia")));
+    panel.append(lista, h("div", { class: "acciones-linea" },
+        datos.peligros.some(p => p.valido) ? h("button", {
+            type: "button", class: "btn btn--primario btn--compacto",
+            onclick: () => agregarPeligrosMarcados(lista, datos.peligros, () => renderPeligrosIA(datos))
+        }, "Agregar seleccionados como peligros") : null,
+        h("button", { type: "button", class: "btn btn--fantasma btn--compacto", onclick: () => { panel.hidden = true; } }, "Cerrar")));
+    panel.scrollIntoView({ block: "start" });
+}
+
+/** Agrega como filas independientes los peligros marcados; reutiliza el primer peligro vacío. */
+function agregarPeligrosMarcados(contenedor, propuestas, alTerminar) {
+    const ids = $$("[data-peligro-ia]", contenedor).filter(c => c.checked).map(c => c.dataset.peligroIa);
+    if (!ids.length) { aviso("Marque al menos un peligro para agregarlo.", "alerta"); return; }
+    const r = estado.registro;
+    let n = 0, primero = -1;
+    for (const pp of propuestas.filter(x => ids.includes(x.id) && x.valido && !yaRegistrado(x))) {
+        let idx = r.peligros.findIndex(p => !p.tipo);
+        if (idx < 0) { r.peligros.push(nuevoPeligro()); idx = r.peligros.length - 1; }
+        const p = r.peligros[idx];
+        Object.assign(p, { tipo: pp.tipo, subtipo: pp.subtipo, dano: pp.dano });
+        aplicarNormativa(p);
+        p.analisisIA = { fuente: pp.fuente, exposicion: pp.exposicion, mecanismo: pp.mecanismo, partesCuerpo: pp.partesCuerpo, certeza: pp.certeza, condicion: pp.condicion, prioridad: pp.prioridad };
+        if (primero < 0) primero = idx;
+        n++;
+    }
+    if (primero >= 0) estado.peligroIdx = primero;
+    renderPeligro(); cambio();
+    alTerminar?.();
+    aviso(`${n} peligro(s) agregado(s). Evalúe Severidad y Frecuencia de cada uno en el paso 4.`, "exito", 8000);
+}
+
+/* =========================================================
    IA: sugerencias STOP
    ========================================================= */
 
@@ -1105,16 +1215,23 @@ function renderAnalisisCompleto() {
         h("h4", {}, "Hallazgos visuales"), listaTexto(a.hallazgosVisuales),
         h("h4", {}, "Peligros potenciales"));
 
-    const peligros = Array.isArray(a.peligrosPotenciales) ? a.peligrosPotenciales : [];
+    a.peligrosNormalizados ??= (Array.isArray(a.peligrosPotenciales) ? a.peligrosPotenciales : []).slice(0, 10)
+        .map(normalizarPeligroIA).sort((x, y) => ORDEN_PRIORIDAD[x.prioridad] - ORDEN_PRIORIDAD[y.prioridad]);
+    const peligros = a.peligrosNormalizados;
     if (!peligros.length) panel.append(h("p", { class: "ayuda" }, "Sin elementos."));
-    const ulp = h("ul", { class: "lista-simple" });
-    for (const pp of peligros) {
-        ulp.append(h("li", {},
-            h("strong", {}, [pp.tipo, pp.subtipo, pp.dano].filter(Boolean).join(" — ") || "Peligro"),
-            pp.justificacion ? ` — ${pp.justificacion}` : "", " ",
-            h("button", { type: "button", class: "btn btn--secundario btn--compacto", onclick: () => agregarPeligroSugerido(pp.tipo, pp.subtipo, pp.dano) }, "Agregar como peligro")));
+    else {
+        const lista = h("div");
+        peligros.forEach(pp => lista.append(tarjetaPeligroIA(pp, "anp")));
+        panel.append(lista);
+        if (peligros.some(p => p.valido)) {
+            panel.append(h("button", {
+                type: "button", class: "btn btn--secundario btn--compacto",
+                onclick: () => agregarPeligrosMarcados(lista, peligros, renderAnalisisCompleto)
+            }, "Agregar seleccionados como peligros"));
+        }
     }
-    panel.append(ulp);
+    const brechas = (Array.isArray(a.brechas) ? a.brechas : []).filter(Boolean);
+    if (brechas.length) panel.append(h("h4", {}, "Brechas detectadas"), listaTexto(brechas));
 
     panel.append(h("h4", {}, "Información por confirmar"), listaTexto(a.preguntasPorConfirmar),
         h("p", { class: "ayuda" }, "Estas preguntas no se responden automáticamente; confirme la información en campo."));
@@ -1474,6 +1591,9 @@ async function construirDetalle(r, peligroIdx = null) {
                 ["Severidad", ev.severidad ? `${ev.severidad.nombre} (${ev.severidad.codigo}) — Valor S: ${ev.severidad.valor}` : ""],
                 ["Frecuencia", ev.frecuencia ? `${ev.frecuencia.nombre} (${ev.frecuencia.codigo}) — Valor F: ${ev.frecuencia.valor}` : ""],
                 ["NRI", ev.nri], ["Nivel de riesgo inicial", etiquetaNivel(ev.nivelRiesgo)],
+                ...(p.analisisIA ? [["Análisis IA (fuente / exposición / mecanismo)",
+                    [p.analisisIA.fuente, p.analisisIA.exposicion, p.analisisIA.mecanismo].filter(Boolean).join("\n")
+                    + `\nCerteza: ${p.analisisIA.certeza}${p.analisisIA.condicion ? ` — ${p.analisisIA.condicion}` : ""} · Prioridad: ${p.analisisIA.prioridad}`]] : []),
                 ...Object.entries(CATEGORIAS_STOP).map(([k, v]) => [`${k} — ${v.nombre}`, ctrl(k)])
             ]))));
     });
