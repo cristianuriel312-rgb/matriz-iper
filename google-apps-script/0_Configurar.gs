@@ -17,6 +17,7 @@ function inicializar() {
   hojaJson_();
   var hojaDefecto = libro.getSheetByName('Hoja 1') || libro.getSheetByName('Sheet1');
   if (hojaDefecto && libro.getSheets().length > 1 && hojaDefecto.getLastRow() === 0) libro.deleteSheet(hojaDefecto);
+  aplicarFormato();
   console.log('✔ Hojas listas en: ' + libro.getUrl());
   console.log('✔ Carpeta de evidencias: ' + carpetaEvidencias_().getUrl());
   console.log(proveedorIA_()

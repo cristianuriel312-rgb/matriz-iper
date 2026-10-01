@@ -43,6 +43,7 @@ function hojaJson_() { return hoja_(CONFIG.HOJA_JSON, COLUMNAS_JSON); }
 function celda_(v) {
   if (v === null || v === undefined) return '';
   if (typeof v === 'number' || typeof v === 'boolean') return v;
+  if (v instanceof Date) return isNaN(v.getTime()) ? '' : v;
   var s = String(v);
   return /^[=+\-@]/.test(s) ? "'" + s : s;
 }
@@ -100,6 +101,13 @@ function textoControles_(p, cat) {
   return ex.concat(ad).join('\n');
 }
 
+/** ISO → Date para que Sheets la muestre como fecha local. */
+function fecha_(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  return isNaN(d.getTime()) ? String(iso) : d;
+}
+
 function filasMatriz_(r) {
   var fotos = r.fotografias || [];
   var urls = fotos.map(function (f) { return f.url || ''; }).filter(String).join('\n');
@@ -118,7 +126,7 @@ function filasMatriz_(r) {
     var s = ev.severidad || {};
     var f = ev.frecuencia || {};
     return [
-      r.id, r.fechaCreacion, r.fechaActualizacion, r.subArea, r.proceso, r.actividad, r.tareas, r.tipoActividad,
+      r.id, fecha_(r.fechaCreacion), fecha_(r.fechaActualizacion), r.subArea, r.proceso, r.actividad, r.tareas, r.tipoActividad,
       modo.texto, modo.asistidoIA ? 'Sí' : 'No', p.tipo, p.subtipo, p.dano, p.normaPrincipal,
       p.criterioAplicacion, p.normasComplementarias || 'No especificadas', s.nombre, s.codigo, s.valor,
       f.nombre, f.codigo, f.valor, ev.nri, ev.nivelRiesgo,
@@ -147,6 +155,7 @@ function guardarRegistro_(p, usuario) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
+    aplicarFormatoSiHaceFalta_();
     var existente = buscarJson_(id);
     var base = Number(p.baseVersion) || 0;
     if (existente && !p.forzar && existente.version > base) {
