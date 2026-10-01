@@ -25,7 +25,7 @@ import {
 import { comprimirImagen, formatoPermitido } from "./js/imagen.js";
 import { filasMatriz, generarCSV, descargarArchivo, conteoSTOP } from "./js/exportar.js";
 
-const VERSION_APP = "1.1.1";
+const VERSION_APP = "1.1.2";
 const PASOS = [
     { n: 1, nombre: "Actividad" },
     { n: 2, nombre: "Modo de ocurrencia y fotografías" },

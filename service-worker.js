@@ -4,7 +4,7 @@
  * Las llamadas al backend (Google Apps Script, IA, Drive) nunca se cachean.
  * Al publicar una nueva versión, incremente VERSION_CACHE.
  */
-const VERSION_CACHE = "iper-v1.1.1";
+const VERSION_CACHE = "iper-v1.1.2";
 const APP_SHELL = [
     "./",
     "./index.html",
@@ -31,7 +31,10 @@ const APP_SHELL = [
 ];
 
 self.addEventListener("install", event => {
-    event.waitUntil(caches.open(VERSION_CACHE).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
+    // cache: "reload" evita copias viejas de la caché HTTP del navegador al instalar una versión nueva.
+    event.waitUntil(caches.open(VERSION_CACHE)
+        .then(cache => cache.addAll(APP_SHELL.map(u => new Request(u, { cache: "reload" }))))
+        .then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", event => {
@@ -60,7 +63,7 @@ self.addEventListener("fetch", event => {
 
     // Recursos estáticos: cache-first + revalidación en segundo plano.
     event.respondWith(caches.match(req).then(cacheada => {
-        const red = fetch(req).then(resp => {
+        const red = fetch(req, { cache: "no-cache" }).then(resp => {
             if (resp && resp.ok) {
                 const copia = resp.clone();
                 caches.open(VERSION_CACHE).then(c => c.put(req, copia));
