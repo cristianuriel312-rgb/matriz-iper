@@ -14,7 +14,8 @@ export const CONFIG_DEFECTO = Object.freeze({
     maxFotoMB: 10,           // Límite de tamaño del archivo original
     maxDimension: 1920,      // Dimensión máxima tras compresión (1600–2048 px)
     calidadJpeg: 0.8,        // Calidad JPEG (0.75–0.85)
-    sincronizarAlGuardar: true
+    sincronizarAlGuardar: true,
+    modeloIA: ""            // "" = automático (lo define el backend); ver MODELOS_IA en ai-service.js
 });
 
 export function obtenerConfig() {

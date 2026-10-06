@@ -8,6 +8,20 @@ import { llamarBackend } from "./api-client.js";
 import { blobABase64 } from "./imagen.js";
 import { obtenerFotoLocal } from "./storage-service.js";
 import { arbolCatalogo } from "./catalogo.js";
+import { obtenerConfig } from "./config.js";
+
+/** Modelos seleccionables en ⚙ Configuración (deben coincidir con MODELOS_IA del backend). */
+export const MODELOS_IA = [
+    { id: "", nombre: "Automático (lo define el administrador)" },
+    { id: "gemini", nombre: "Gemini Flash — gratis", proveedor: "gemini" },
+    { id: "claude-haiku-4-5", nombre: "Claude Haiku 4.5 — el más económico", proveedor: "anthropic" },
+    { id: "claude-sonnet-5-5", nombre: "Claude Sonnet 5.5 — recomendado (calidad/costo)", proveedor: "anthropic" },
+    { id: "claude-opus-5-5", nombre: "Claude Opus 5.5 — máxima calidad", proveedor: "anthropic" }
+];
+
+let ultimoModelo = "";
+/** Modelo que generó la última respuesta (p. ej. "claude-sonnet-5-5" o "gemini-flash-latest"). */
+export function ultimoModeloIA() { return ultimoModelo; }
 
 export const TIPOS_SOLICITUD_IA = Object.freeze({
     MEJORAR_MODO_OCURRENCIA: "MEJORAR_MODO_OCURRENCIA",
@@ -19,7 +33,9 @@ export const TIPOS_SOLICITUD_IA = Object.freeze({
 
 export async function solicitarIA({ tipoSolicitud, contexto, imagenes = [] }) {
     if (!TIPOS_SOLICITUD_IA[tipoSolicitud]) throw new Error(`Tipo de solicitud IA no soportado: ${tipoSolicitud}`);
-    const r = await llamarBackend("ia", { tipoSolicitud, contexto, imagenes }, { timeoutMs: 180000 });
+    const modelo = obtenerConfig().modeloIA || "";
+    const r = await llamarBackend("ia", { tipoSolicitud, contexto, imagenes, modelo }, { timeoutMs: 180000 });
+    ultimoModelo = r.modelo || "";
     return r.resultado;
 }
 

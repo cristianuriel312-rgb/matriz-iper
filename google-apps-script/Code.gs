@@ -66,6 +66,7 @@ function doPost(e) {
         return respuesta_({
           ok: true, version: CONFIG.VERSION, hoja: CONFIG.HOJA_MATRIZ,
           carpeta: carpetaEvidencias_().getName(), iaConfigurada: Boolean(proveedorIA_()), proveedorIA: proveedorIA_() || 'ninguno',
+          proveedoresIA: proveedoresDisponibles_(),
           libro: obtenerLibro_().getName()
         });
       case 'guardarRegistro':
@@ -79,7 +80,8 @@ function doPost(e) {
       case 'subirFotografia':
         return respuesta_(subirFotografia_(p));
       case 'ia':
-        return respuesta_({ ok: true, resultado: solicitarIA_(p.tipoSolicitud, p.contexto || {}, p.imagenes || []) });
+        var resultadoIA = solicitarIA_(p.tipoSolicitud, p.contexto || {}, p.imagenes || [], p.modelo);
+        return respuesta_({ ok: true, resultado: resultadoIA, modelo: ultimoModeloUsado_ });
       default:
         return respuesta_({ ok: false, error: 'Acción no soportada.' });
     }

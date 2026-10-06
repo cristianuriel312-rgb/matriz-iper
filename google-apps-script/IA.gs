@@ -6,6 +6,41 @@
 
 var IA_URL = 'https://api.anthropic.com/v1/messages';
 var IA_MODELO_PREDETERMINADO = 'claude-opus-5-5';
+/**
+ * Modelos que el usuario puede elegir desde la app (⚙ Configuración → Modelo de IA).
+ * Solo se aceptan estos identificadores; cualquier otro valor usa la selección automática.
+ * Precios de referencia por millón de tokens (entrada / salida), Claude API, sep-2026.
+ */
+var MODELOS_IA = {
+  'gemini':            { proveedor: 'gemini',    nombre: 'Gemini Flash (gratis)' },
+  'claude-haiku-4-5':  { proveedor: 'anthropic', nombre: 'Claude Haiku 4.5 (1 / 5 USD)' },
+  'claude-sonnet-5-5': { proveedor: 'anthropic', nombre: 'Claude Sonnet 5.5 (2 / 10 USD)' },
+  'claude-opus-5-5':   { proveedor: 'anthropic', nombre: 'Claude Opus 5.5 (4 / 20 USD)' }
+};
+
+/** Resuelve {proveedor, modelo} a partir del modelo pedido por la app o de la configuración del servidor. */
+function resolverModeloIA_(modeloPedido) {
+  var def = MODELOS_IA[String(modeloPedido || '')];
+  if (def) {
+    var clave = def.proveedor === 'gemini' ? 'GEMINI_API_KEY' : 'ANTHROPIC_API_KEY';
+    if (!prop_(clave)) {
+      throw new Error(def.proveedor === 'gemini'
+        ? 'Gemini no está configurado en el backend (falta GEMINI_API_KEY). Elija otro modelo en ⚙ Configuración.'
+        : 'Claude no está configurado en el backend (falta ANTHROPIC_API_KEY). Elija "Automático" o Gemini en ⚙ Configuración.');
+    }
+    return { proveedor: def.proveedor, modelo: def.proveedor === 'gemini' ? '' : modeloPedido };
+  }
+  var proveedor = proveedorIA_();
+  return { proveedor: proveedor, modelo: proveedor === 'anthropic' ? (prop_('AI_MODEL') || IA_MODELO_PREDETERMINADO) : '' };
+}
+
+/** Disponibilidad por proveedor (para que la app muestre qué modelos se pueden usar). */
+function proveedoresDisponibles_() {
+  return { gemini: Boolean(prop_('GEMINI_API_KEY')), anthropic: Boolean(prop_('ANTHROPIC_API_KEY')), automatico: proveedorIA_() || 'ninguno' };
+}
+
+var ultimoModeloUsado_ = '';
+
 var IA_MAX_IMAGENES = 3;
 var IA_MAX_BYTES_IMAGEN = 5 * 1024 * 1024;
 
@@ -199,10 +234,11 @@ var PROMPTS_IA = {
   }
 };
 
-function solicitarIA_(tipoSolicitud, contexto, imagenes) {
+function solicitarIA_(tipoSolicitud, contexto, imagenes, modeloPedido) {
   var def = PROMPTS_IA[tipoSolicitud];
   if (!def) throw new Error('Tipo de solicitud de IA no soportado.');
   if (!proveedorIA_()) throw new Error('La IA no está configurada en el backend: agregue GEMINI_API_KEY (gratuita, aistudio.google.com) en Propiedades del script.');
+  var eleccion = resolverModeloIA_(modeloPedido);
 
   var contenido = [];
   (imagenes || []).slice(0, IA_MAX_IMAGENES).forEach(function (img) {
@@ -220,7 +256,7 @@ function solicitarIA_(tipoSolicitud, contexto, imagenes) {
       '\n\nResponde solo con el objeto JSON solicitado.'
   });
 
-  var texto = llamarProveedorIA_(REGLAS_GENERALES + '\n\n' + def.sistema, contenido, def.esfuerzo);
+  var texto = llamarProveedorIA_(REGLAS_GENERALES + '\n\n' + def.sistema, contenido, def.esfuerzo, eleccion);
   return extraerJson_(texto);
 }
 
@@ -238,8 +274,15 @@ function proveedorIA_() {
 }
 
 /** Despacha al proveedor activo. contenido usa bloques {type:'image'|'text'} y se adapta para cada API. */
-function llamarProveedorIA_(sistema, contenido, esfuerzo) {
-  return proveedorIA_() === 'gemini' ? llamarGemini_(sistema, contenido) : llamarClaude_(sistema, contenido, esfuerzo);
+function llamarProveedorIA_(sistema, contenido, esfuerzo, eleccion) {
+  eleccion = eleccion || resolverModeloIA_('');
+  if (eleccion.proveedor === 'gemini') {
+    var t = llamarGemini_(sistema, contenido);
+    ultimoModeloUsado_ = ultimoModeloGemini_;
+    return t;
+  }
+  ultimoModeloUsado_ = eleccion.modelo;
+  return llamarClaude_(sistema, contenido, esfuerzo, eleccion.modelo);
 }
 
 /* ---------- Google Gemini (API gratuita de Google AI Studio) ---------- */
@@ -313,24 +356,27 @@ function llamarGemini_(sistema, contenido) {
 /* ---------- Anthropic Claude (API de pago) ---------- */
 
 /** Llamada HTTP a la Messages API de Claude. */
-function llamarClaude_(sistema, contenido, esfuerzo) {
+function llamarClaude_(sistema, contenido, esfuerzo, modelo) {
+  modelo = modelo || prop_('AI_MODEL') || IA_MODELO_PREDETERMINADO;
+  // Haiku 4.5 no admite el parámetro de esfuerzo ni el respaldo automático del servidor.
+  var esHaiku = /^claude-haiku/.test(modelo);
   var cuerpo = {
-    model: prop_('AI_MODEL') || IA_MODELO_PREDETERMINADO,
+    model: modelo,
     max_tokens: 8000,
     system: sistema,
-    messages: [{ role: 'user', content: contenido }],
-    output_config: { effort: esfuerzo || 'medium' },
-    // Si el modelo declina por política de seguridad, el servidor reintenta con el modelo de respaldo recomendado.
-    fallbacks: 'default'
+    messages: [{ role: 'user', content: contenido }]
   };
+  var headers = { 'x-api-key': prop_('ANTHROPIC_API_KEY'), 'anthropic-version': '2023-06-01' };
+  if (!esHaiku) {
+    cuerpo.output_config = { effort: esfuerzo || 'medium' };
+    // Si el modelo declina por política de seguridad, el servidor reintenta con el modelo de respaldo recomendado.
+    cuerpo.fallbacks = 'default';
+    headers['anthropic-beta'] = 'server-side-fallback-2026-07-01';
+  }
   var resp = UrlFetchApp.fetch(IA_URL, {
     method: 'post',
     contentType: 'application/json',
-    headers: {
-      'x-api-key': prop_('ANTHROPIC_API_KEY'),
-      'anthropic-version': '2023-06-01',
-      'anthropic-beta': 'server-side-fallback-2026-07-01'
-    },
+    headers: headers,
     payload: JSON.stringify(cuerpo),
     muteHttpExceptions: true
   });

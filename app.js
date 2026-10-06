@@ -20,12 +20,12 @@ import { sincronizarTodo, sincronizarRegistro, conservarVersionLocal, usarVersio
 import { probarConexion } from "./js/sheets-service.js";
 import {
     solicitarIA, TIPOS_SOLICITUD_IA, contextoMejorarModo, contextoControles,
-    contextoFotografia, contextoCompleto, prepararImagenes, hallazgosConfirmados
+    contextoFotografia, contextoCompleto, prepararImagenes, hallazgosConfirmados, MODELOS_IA, ultimoModeloIA
 } from "./js/ai-service.js";
 import { comprimirImagen, formatoPermitido } from "./js/imagen.js";
 import { filasMatriz, generarCSV, descargarArchivo, conteoSTOP } from "./js/exportar.js";
 
-const VERSION_APP = "1.2.0";
+const VERSION_APP = "1.3.0";
 const PASOS = [
     { n: 1, nombre: "Actividad" },
     { n: 2, nombre: "Modo de ocurrencia y fotografías" },
@@ -731,6 +731,14 @@ function renderControl(p, cat, c, i) {
    IA: mejorar modo de ocurrencia
    ========================================================= */
 
+/** " · Claude Sonnet 5.5" según el modelo que respondió la última solicitud. */
+function etiquetaModelo() {
+    const id = ultimoModeloIA();
+    if (!id) return "";
+    const m = MODELOS_IA.find(x => x.id && id.startsWith(x.id));
+    return ` · ${m ? m.nombre.split(" — ")[0] : id}`;
+}
+
 function manejarErrorIA(e) {
     aviso(e.message || "No fue posible completar la solicitud de IA.", "error", 8000);
     if (e.codigo === "NO_CONFIGURADO") abrirConfiguracion();
@@ -763,7 +771,7 @@ async function mejorarModoOcurrencia() {
         aviso("Descripción asistida por IA aceptada.", "exito");
     };
     await abrirModal({
-        titulo: "Mejora del modo de ocurrencia",
+        titulo: `Mejora del modo de ocurrencia${etiquetaModelo()}`,
         cuerpo: [cuerpo, h("p", { class: "ayuda" }, "Revise que la versión no agregue equipos, sustancias, energías ni condiciones que no existan en la tarea.")],
         acciones: [
             { texto: "Cancelar", valor: null },
@@ -1062,7 +1070,7 @@ async function identificarPeligrosIA() {
 function renderPeligrosIA(datos) {
     const panel = vaciar($("#panel-peligros-ia"));
     panel.hidden = false;
-    panel.append(h("h4", {}, `✨ Peligros identificados por IA (${datos.peligros.length})`),
+    panel.append(h("h4", {}, `✨ Peligros identificados por IA (${datos.peligros.length})${etiquetaModelo()}`),
         h("p", { class: "ayuda" }, "Propuestas ordenadas por prioridad. Ninguna se agrega automáticamente: marque las que correspondan. Cada una se agregará como una fila independiente de la matriz."));
     const energias = (Array.isArray(datos.energias) ? datos.energias : []).filter(e => e?.energia);
     if (energias.length) {
@@ -1150,7 +1158,7 @@ function listaSugerenciasSeleccionables(sugerencias, prefijo) {
 function renderSugerencias(notas) {
     const panel = vaciar($("#panel-sugerencias"));
     panel.hidden = false;
-    panel.append(h("p", {}, h("strong", {}, "Controles sugeridos por IA (propuestos). "),
+    panel.append(h("p", {}, h("strong", {}, `Controles sugeridos por IA (propuestos)${etiquetaModelo()}. `),
         "Marque los que desea agregar; ninguno se selecciona automáticamente ni se considera implementado."));
     if (notas) panel.append(h("p", { class: "ayuda" }, String(notas)));
     if (!estado.sugerencias.length) panel.append(h("p", {}, "La IA no propuso controles para este escenario."));
@@ -1804,19 +1812,23 @@ async function abrirConfiguracion() {
     const iClave = h("input", { id: "cfg-clave", type: "password", value: cfg.claveAcceso, autocomplete: "off" });
     const iUsuario = h("input", { id: "cfg-usuario", type: "text", value: cfg.usuario, maxlength: 120, autocomplete: "name" });
     const iMax = h("input", { id: "cfg-max", type: "number", min: 1, max: 50, step: 1, value: cfg.maxFotoMB });
+    const iModelo = h("select", { id: "cfg-modelo" });
+    MODELOS_IA.forEach(m => iModelo.append(h("option", { value: m.id }, m.nombre)));
+    iModelo.value = cfg.modeloIA || "";
     const iAuto = h("input", { id: "cfg-auto", type: "checkbox", checked: cfg.sincronizarAlGuardar, style: "width:24px;height:24px;min-height:24px" });
     const resultado = h("p", { class: "ayuda", "aria-live": "polite" });
     const cuerpo = h("div", { class: "rejilla-campos" },
         campo("cfg-url", "URL del backend (Google Apps Script Web App)", iUrl, "Se obtiene al desplegar google-apps-script/ como aplicación web. No es un secreto."),
         campo("cfg-clave", "Código de acceso", iClave, "Definido por el administrador en la propiedad APP_ACCESS_KEY del script. Se guarda solo en este dispositivo."),
         campo("cfg-usuario", "Nombre de usuario", iUsuario, "Se registra como usuario creador / última modificación."),
+        campo("cfg-modelo", "Modelo de IA", iModelo, "Gemini es gratuito. Los modelos Claude tienen costo por uso y requieren que el administrador configure ANTHROPIC_API_KEY."),
         campo("cfg-max", "Tamaño máximo por fotografía (MB)", iMax),
         h("div", { class: "campo campo--ancho" }, h("label", { for: "cfg-auto", style: "display:flex;gap:.5rem;align-items:center" }, iAuto, "Sincronizar automáticamente al guardar")),
         h("div", { class: "campo campo--ancho" },
             h("p", { class: "ayuda" }, `Validación de la matriz de riesgo: ${val.valida ? `✔ correcta (${val.total} combinaciones A1–E5)` : `✖ ${val.errores.join(" ")}`}`),
             h("p", { class: "ayuda" }, `Versión ${VERSION_APP} · Registros locales: ${leerTodosLocales().length}`)),
         resultado);
-    const leer = () => ({ backendUrl: iUrl.value.trim(), claveAcceso: iClave.value, usuario: iUsuario.value.trim(), maxFotoMB: iMax.value, sincronizarAlGuardar: iAuto.checked });
+    const leer = () => ({ backendUrl: iUrl.value.trim(), claveAcceso: iClave.value, usuario: iUsuario.value.trim(), maxFotoMB: iMax.value, sincronizarAlGuardar: iAuto.checked, modeloIA: iModelo.value });
     await abrirModal({
         titulo: "Configuración",
         cuerpo,
@@ -1836,7 +1848,11 @@ async function abrirConfiguracion() {
                     resultado.textContent = "Probando conexión…";
                     try {
                         const r = await probarConexion();
-                        resultado.textContent = `✔ Conexión correcta. Hoja: ${r.hoja || "Matriz_IPER"} · IA: ${r.iaConfigurada ? "configurada" : "NO configurada"} · Drive: ${r.carpeta || "Evidencias_Matriz_IPER"}`;
+                        const pv = r.proveedoresIA || {};
+                        const elegido = MODELOS_IA.find(m => m.id === iModelo.value);
+                        const faltaClave = elegido?.proveedor && pv[elegido.proveedor] === false;
+                        resultado.textContent = `✔ Conexión correcta. Hoja: ${r.hoja || "Matriz_IPER"} · Drive: ${r.carpeta || "Evidencias_Matriz_IPER"} · IA disponible: Gemini ${pv.gemini ? "✔" : "✖"} · Claude ${pv.anthropic ? "✔" : "✖"}`
+                            + (faltaClave ? ` ⚠ El modelo elegido (${elegido.nombre}) no está configurado en el backend.` : "");
                     } catch (e) { resultado.textContent = `✖ ${e.message}`; }
                     return false;
                 }
