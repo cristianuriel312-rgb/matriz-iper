@@ -25,7 +25,7 @@ import {
 import { comprimirImagen, formatoPermitido } from "./js/imagen.js";
 import { filasMatriz, generarCSV, descargarArchivo, conteoSTOP } from "./js/exportar.js";
 
-const VERSION_APP = "1.3.0";
+const VERSION_APP = "1.3.1";
 const PASOS = [
     { n: 1, nombre: "Actividad" },
     { n: 2, nombre: "Modo de ocurrencia y fotografías" },
@@ -109,11 +109,41 @@ function aviso(mensaje, tipo = "info", ms = 5000) {
     setTimeout(() => el.remove(), ms);
 }
 
+let cargaIA = null; // { ctrl, intervalo }
+
 function mostrarCargando(texto = "Procesando…") {
     $("#cargando-texto").textContent = texto;
     $("#cargando").hidden = false;
 }
-function ocultarCargando() { $("#cargando").hidden = true; }
+
+/** Carga de IA: muestra segundos transcurridos, aviso de lentitud a los 20 s y botón Cancelar. Devuelve la señal de cancelación. */
+function mostrarCargandoIA(texto) {
+    mostrarCargando(texto);
+    const ctrl = new AbortController();
+    const inicio = Date.now();
+    const tiempo = $("#cargando-tiempo");
+    tiempo.hidden = false;
+    tiempo.textContent = "0 s";
+    $("#cargando-aviso").hidden = true;
+    const cancelar = $("#cargando-cancelar");
+    cancelar.hidden = false;
+    cancelar.onclick = () => ctrl.abort();
+    const intervalo = setInterval(() => {
+        const s = Math.round((Date.now() - inicio) / 1000);
+        tiempo.textContent = `${s} s`;
+        if (s >= 20) $("#cargando-aviso").hidden = false;
+    }, 1000);
+    cargaIA = { ctrl, intervalo };
+    return ctrl.signal;
+}
+
+function ocultarCargando() {
+    $("#cargando").hidden = true;
+    if (cargaIA) { clearInterval(cargaIA.intervalo); cargaIA = null; }
+    $("#cargando-tiempo").hidden = true;
+    $("#cargando-aviso").hidden = true;
+    $("#cargando-cancelar").hidden = true;
+}
 
 let modalResolver = null;
 let modalFocoPrevio = null;
@@ -735,11 +765,13 @@ function renderControl(p, cat, c, i) {
 function etiquetaModelo() {
     const id = ultimoModeloIA();
     if (!id) return "";
+    if (id.startsWith("gemini")) return ` · ${/lite/.test(id) ? "Gemini Flash-Lite" : "Gemini Flash"}`;
     const m = MODELOS_IA.find(x => x.id && id.startsWith(x.id));
     return ` · ${m ? m.nombre.split(" — ")[0] : id}`;
 }
 
 function manejarErrorIA(e) {
+    if (e.codigo === "CANCELADO") { aviso("Solicitud de IA cancelada."); return; }
     aviso(e.message || "No fue posible completar la solicitud de IA.", "error", 8000);
     if (e.codigo === "NO_CONFIGURADO") abrirConfiguracion();
 }
@@ -750,9 +782,9 @@ async function mejorarModoOcurrencia() {
     if (!original) { aviso("Escriba primero una descripción del modo de ocurrencia.", "alerta"); $("#f-modo").focus(); return; }
     let mejorado;
     try {
-        mostrarCargando("La IA está mejorando la descripción…");
+        const senal = mostrarCargandoIA("La IA está mejorando la descripción…");
         const p = peligroActivo();
-        const res = await solicitarIA({ tipoSolicitud: TIPOS_SOLICITUD_IA.MEJORAR_MODO_OCURRENCIA, contexto: contextoMejorarModo(r, p) });
+        const res = await solicitarIA({ signal: senal, tipoSolicitud: TIPOS_SOLICITUD_IA.MEJORAR_MODO_OCURRENCIA, contexto: contextoMejorarModo(r, p) });
         mejorado = String(res?.texto || "").trim();
         if (!mejorado) throw new Error("La IA no devolvió una descripción.");
     } catch (e) { manejarErrorIA(e); return; }
@@ -927,10 +959,10 @@ function validarSugerenciaCatalogo(tipo, subtipo, dano) {
 async function analizarFotografia(foto) {
     let res;
     try {
-        mostrarCargando("La IA está analizando la fotografía…");
+        const senal = mostrarCargandoIA("La IA está analizando la fotografía…");
         const imagenes = await prepararImagenes([foto], 1);
         if (!imagenes.length) throw new Error("La fotografía no está disponible en este dispositivo.");
-        res = await solicitarIA({ tipoSolicitud: TIPOS_SOLICITUD_IA.ANALIZAR_FOTOGRAFIA, contexto: contextoFotografia(estado.registro), imagenes });
+        res = await solicitarIA({ signal: senal, tipoSolicitud: TIPOS_SOLICITUD_IA.ANALIZAR_FOTOGRAFIA, contexto: contextoFotografia(estado.registro), imagenes });
     } catch (e) { manejarErrorIA(e); return; }
     finally { ocultarCargando(); }
 
@@ -1057,9 +1089,9 @@ async function identificarPeligrosIA() {
     if (!r.modoOcurrencia.texto.trim()) { aviso("Describa primero el modo de ocurrencia (paso 2).", "alerta"); return; }
     let res;
     try {
-        mostrarCargando("La IA está analizando el proceso e identificando peligros…");
+        const senal = mostrarCargandoIA("La IA está analizando el proceso e identificando peligros…");
         const imagenes = await prepararImagenes(r.fotografias, 2);
-        res = await solicitarIA({ tipoSolicitud: TIPOS_SOLICITUD_IA.IDENTIFICAR_PELIGROS, contexto: contextoCompleto(r), imagenes });
+        res = await solicitarIA({ signal: senal, tipoSolicitud: TIPOS_SOLICITUD_IA.IDENTIFICAR_PELIGROS, contexto: contextoCompleto(r), imagenes });
     } catch (e) { manejarErrorIA(e); return; }
     finally { ocultarCargando(); }
     const peligros = (Array.isArray(res?.peligros) ? res.peligros : []).slice(0, 10).map(normalizarPeligroIA)
@@ -1124,8 +1156,8 @@ async function sugerirControles() {
     if (!p.tipo || !p.subtipo || !p.dano) { aviso("Identifique primero Tipo, Subtipo y Daño del peligro (paso 3).", "alerta"); return; }
     let res;
     try {
-        mostrarCargando("La IA está proponiendo controles STOP…");
-        res = await solicitarIA({ tipoSolicitud: TIPOS_SOLICITUD_IA.SUGERIR_CONTROLES_STOP, contexto: contextoControles(estado.registro, p) });
+        const senal = mostrarCargandoIA("La IA está proponiendo controles STOP…");
+        res = await solicitarIA({ signal: senal, tipoSolicitud: TIPOS_SOLICITUD_IA.SUGERIR_CONTROLES_STOP, contexto: contextoControles(estado.registro, p) });
     } catch (e) { manejarErrorIA(e); return; }
     finally { ocultarCargando(); }
     estado.sugerencias = normalizarSugerencias(res?.controles);
@@ -1196,9 +1228,9 @@ async function analizarActividadCompleta() {
     if (!r.actividad && !r.modoOcurrencia.texto) { aviso("Capture al menos la actividad y el modo de ocurrencia.", "alerta"); return; }
     let res;
     try {
-        mostrarCargando("La IA está analizando la actividad completa…");
+        const senal = mostrarCargandoIA("La IA está analizando la actividad completa…");
         const imagenes = await prepararImagenes(r.fotografias, 3);
-        res = await solicitarIA({ tipoSolicitud: TIPOS_SOLICITUD_IA.ANALIZAR_ACTIVIDAD_COMPLETA, contexto: contextoCompleto(r), imagenes });
+        res = await solicitarIA({ signal: senal, tipoSolicitud: TIPOS_SOLICITUD_IA.ANALIZAR_ACTIVIDAD_COMPLETA, contexto: contextoCompleto(r), imagenes });
     } catch (e) { manejarErrorIA(e); return; }
     finally { ocultarCargando(); }
     estado.analisisCompleto = { ...res, controlesSugeridos: normalizarSugerencias(res?.controlesSugeridos) };

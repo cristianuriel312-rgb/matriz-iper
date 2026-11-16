@@ -17,11 +17,15 @@ export class SinConexionError extends Error {
     constructor() { super("Sin conexión a Internet. La información se conserva localmente."); this.codigo = "SIN_CONEXION"; }
 }
 
+export class CanceladoError extends Error {
+    constructor() { super("Solicitud cancelada."); this.codigo = "CANCELADO"; }
+}
+
 export class BackendError extends Error {
     constructor(mensaje, datos) { super(mensaje); this.codigo = "BACKEND"; this.datos = datos; }
 }
 
-export async function llamarBackend(accion, payload = {}, { timeoutMs = 60000 } = {}) {
+export async function llamarBackend(accion, payload = {}, { timeoutMs = 60000, signal } = {}) {
     const cfg = obtenerConfig();
     const url = (cfg.backendUrl || "").trim();
     if (!/^https:\/\//.test(url)) throw new BackendNoConfiguradoError();
@@ -29,6 +33,9 @@ export async function llamarBackend(accion, payload = {}, { timeoutMs = 60000 } 
 
     const ctrl = new AbortController();
     const temporizador = setTimeout(() => ctrl.abort(), timeoutMs);
+    // Cancelación solicitada por el usuario (botón Cancelar).
+    const alCancelar = () => ctrl.abort();
+    if (signal) { if (signal.aborted) throw new CanceladoError(); signal.addEventListener("abort", alCancelar, { once: true }); }
     let respuesta;
     try {
         respuesta = await fetch(url, {
@@ -40,11 +47,13 @@ export async function llamarBackend(accion, payload = {}, { timeoutMs = 60000 } 
             signal: ctrl.signal
         });
     } catch (e) {
+        if (e.name === "AbortError" && signal?.aborted) throw new CanceladoError();
         if (e.name === "AbortError") throw new BackendError("El servidor tardó demasiado en responder. Intente nuevamente.");
         if (!navigator.onLine) throw new SinConexionError();
         throw new BackendError("No fue posible contactar al backend. Verifique la URL, el despliegue del Web App y su conexión.");
     } finally {
         clearTimeout(temporizador);
+        signal?.removeEventListener("abort", alCancelar);
     }
 
     if (!respuesta.ok) throw new BackendError(`El backend respondió con estado HTTP ${respuesta.status}.`);

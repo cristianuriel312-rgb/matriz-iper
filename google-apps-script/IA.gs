@@ -288,15 +288,24 @@ function llamarProveedorIA_(sistema, contenido, esfuerzo, eleccion) {
 /* ---------- Google Gemini (API gratuita de Google AI Studio) ---------- */
 
 var GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
-// Si el modelo configurado no existe se prueba el siguiente (los nombres de Gemini cambian con nuevas versiones).
-// También se usan como respaldo cuando un modelo está saturado (HTTP 503/500).
-var GEMINI_MODELOS = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite'];
+// Orden de preferencia. Los alias "-latest" siguen automáticamente a la versión vigente de Google.
+// Si un modelo está saturado (503/500), agotó su cuota (429) o ya no existe (404), se pasa al siguiente sin esperar.
+// (Nov-2026: los modelos 2.5 fueron retirados para usuarios nuevos; en el plan gratuito los Flash completos
+//  suelen estar saturados y los Flash-Lite responden en segundos.)
+// Flash-Lite primero: en el plan gratuito responde en segundos; el Flash completo queda como último recurso
+// porque suele estar saturado y su respuesta 503 puede tardar hasta ~50 s. GEMINI_MODEL (propiedad) tiene prioridad.
+var GEMINI_MODELOS = ['gemini-flash-lite-latest', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+
+// Presupuesto total de tiempo para una solicitud. Al agotarse no se prueban más modelos.
+var GEMINI_PRESUPUESTO_MS = 70000;
 
 var ultimoModeloGemini_ = '';
+var intentosGemini_ = []; // diagnóstico: [{modelo, http, ms, tokens}]
 
 function modelosGemini_() {
   var configurado = prop_('GEMINI_MODEL');
-  return configurado ? [configurado].concat(GEMINI_MODELOS) : GEMINI_MODELOS;
+  var lista = configurado ? [configurado].concat(GEMINI_MODELOS) : GEMINI_MODELOS.slice();
+  return lista.filter(function (m, i) { return lista.indexOf(m) === i; });
 }
 
 function llamarGemini_(sistema, contenido) {
@@ -305,35 +314,35 @@ function llamarGemini_(sistema, contenido) {
       ? { inline_data: { mime_type: b.source.media_type, data: b.source.data } }
       : { text: b.text };
   });
-  var cuerpo = {
+  var cuerpo = JSON.stringify({
     systemInstruction: { parts: [{ text: sistema }] },
     contents: [{ role: 'user', parts: partes }],
     generationConfig: { responseMimeType: 'application/json', temperature: 0.3, maxOutputTokens: 16384 }
-  };
+  });
   var modelos = modelosGemini_();
+  var inicio = Date.now();
   var ultimoError = '';
   var saturados = 0, limitados = 0;
+  intentosGemini_ = [];
   for (var i = 0; i < modelos.length; i++) {
-    if (i > 0 && modelos.indexOf(modelos[i]) < i) continue; // modelo repetido (GEMINI_MODEL ya en la lista)
-    var resp = null, codigo = 0, datos = null, detalle = '';
-    // Hasta 2 intentos por modelo cuando está saturado; luego se prueba el siguiente modelo.
-    for (var intento = 0; intento < 2; intento++) {
-      resp = UrlFetchApp.fetch(GEMINI_URL + encodeURIComponent(modelos[i]) + ':generateContent', {
-        method: 'post',
-        contentType: 'application/json',
-        headers: { 'x-goog-api-key': prop_('GEMINI_API_KEY') },
-        payload: JSON.stringify(cuerpo),
-        muteHttpExceptions: true
-      });
-      codigo = resp.getResponseCode();
-      try { datos = JSON.parse(resp.getContentText()); } catch (e) { datos = null; }
-      detalle = datos && datos.error && datos.error.message ? datos.error.message : 'sin detalle';
-      if (codigo !== 503 && codigo !== 500) break;
-      if (intento === 0) Utilities.sleep(1500);
-    }
-    if (codigo === 404) { ultimoError = detalle; continue; } // modelo no disponible: probar el siguiente
-    if (codigo === 503 || codigo === 500) { saturados++; ultimoError = detalle; continue; } // saturado: probar otro modelo
-    if (codigo === 429) { limitados++; ultimoError = detalle; continue; } // cuota del modelo agotada: cada modelo tiene su propia cuota
+    if (i > 0 && Date.now() - inicio > GEMINI_PRESUPUESTO_MS) break;
+    var t0 = Date.now();
+    var resp = UrlFetchApp.fetch(GEMINI_URL + encodeURIComponent(modelos[i]) + ':generateContent', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { 'x-goog-api-key': prop_('GEMINI_API_KEY') },
+      payload: cuerpo,
+      muteHttpExceptions: true
+    });
+    var codigo = resp.getResponseCode();
+    var datos = null;
+    try { datos = JSON.parse(resp.getContentText()); } catch (e) { datos = null; }
+    var detalle = datos && datos.error && datos.error.message ? datos.error.message : 'sin detalle';
+    intentosGemini_.push({ modelo: modelos[i], http: codigo, ms: Date.now() - t0, tokens: datos && datos.usageMetadata ? datos.usageMetadata : null });
+
+    if (codigo === 404) { ultimoError = detalle; continue; }                        // modelo retirado o inexistente
+    if (codigo === 503 || codigo === 500) { saturados++; ultimoError = detalle; continue; } // saturado: siguiente modelo
+    if (codigo === 429) { limitados++; ultimoError = detalle; continue; }          // cuota de ese modelo agotada
     if (codigo === 400 && /API key not valid|API_KEY_INVALID/i.test(detalle)) throw new Error('La API key de Gemini no es válida. Revise GEMINI_API_KEY en Propiedades del script.');
     if (codigo === 403) throw new Error('La API key de Gemini no tiene permiso (¿API deshabilitada o clave restringida?): ' + detalle);
     if (codigo !== 200 || !datos) throw new Error('Error de Gemini (HTTP ' + codigo + '): ' + detalle);
@@ -348,6 +357,7 @@ function llamarGemini_(sistema, contenido) {
     ultimoModeloGemini_ = modelos[i];
     return texto;
   }
+  if (Date.now() - inicio > GEMINI_PRESUPUESTO_MS) throw new Error('Gemini tardó demasiado en responder. Intente de nuevo en un momento.');
   if (limitados && !saturados) throw new Error('Se alcanzó el límite gratuito de Gemini en todos los modelos. Espere un minuto (o hasta mañana si es el límite diario) e intente de nuevo.');
   if (saturados) throw new Error('Los servidores gratuitos de Gemini están saturados en este momento. Intente de nuevo en uno o dos minutos.');
   throw new Error('Ningún modelo de Gemini disponible (' + modelos.join(', ') + '): ' + ultimoError);

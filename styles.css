@@ -342,7 +342,10 @@ fieldset.tarjeta { border: 1px solid var(--gris-300); }
 .aviso--exito { background: var(--bajo); }
 .aviso--alerta { background: var(--medio-fondo); color: var(--medio); border: 1px solid var(--medio-borde); }
 .cargando { position: fixed; inset: 0; background: rgba(255,255,255,.65); z-index: 70; display: flex; align-items: center; justify-content: center; }
-.cargando__caja { background: var(--blanco); padding: 1rem 1.25rem; border-radius: 10px; box-shadow: var(--sombra); display: flex; gap: .75rem; align-items: center; max-width: 90vw; }
+.cargando__caja { background: var(--blanco); padding: 1rem 1.25rem; border-radius: 10px; box-shadow: var(--sombra); display: grid; gap: .6rem; justify-items: center; text-align: center; max-width: min(26rem, 90vw); }
+.cargando__fila { display: flex; gap: .75rem; align-items: center; }
+.cargando__tiempo { margin: 0; font-variant-numeric: tabular-nums; color: var(--gris-700); font-size: .9rem; }
+.cargando__aviso { margin: 0; font-size: .85rem; color: var(--medio); background: var(--medio-fondo); border-radius: 6px; padding: .45rem .6rem; }
 .spinner { width: 1.4rem; height: 1.4rem; border-radius: 50%; border: 3px solid var(--gris-300); border-top-color: var(--azul); animation: giro .8s linear infinite; }
 @keyframes giro { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner, .btn.ocupado::after { animation-duration: 2.5s; } .celda-riesgo.seleccionada { transform: none; } }

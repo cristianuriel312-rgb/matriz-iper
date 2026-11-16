@@ -365,7 +365,14 @@
 </dialog>
 
 <div id="avisos" class="avisos" aria-live="polite" aria-atomic="false"></div>
-<div id="cargando" class="cargando" hidden role="status" aria-live="assertive"><div class="cargando__caja"><span class="spinner" aria-hidden="true"></span><span id="cargando-texto">Procesando…</span></div></div>
+<div id="cargando" class="cargando" hidden role="status" aria-live="polite">
+    <div class="cargando__caja">
+        <div class="cargando__fila"><span class="spinner" aria-hidden="true"></span><span id="cargando-texto">Procesando…</span></div>
+        <p id="cargando-tiempo" class="cargando__tiempo" hidden></p>
+        <p id="cargando-aviso" class="cargando__aviso" hidden>El servicio gratuito de IA está lento en este momento. Puede tardar hasta 2 minutos; puede cancelar e intentar más tarde.</p>
+        <button type="button" id="cargando-cancelar" class="btn btn--fantasma btn--compacto" hidden>Cancelar</button>
+    </div>
+</div>
 
 <script type="module" src="app.js"></script>
 </body>

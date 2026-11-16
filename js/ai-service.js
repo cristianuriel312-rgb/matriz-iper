@@ -31,10 +31,10 @@ export const TIPOS_SOLICITUD_IA = Object.freeze({
     ANALIZAR_ACTIVIDAD_COMPLETA: "ANALIZAR_ACTIVIDAD_COMPLETA"
 });
 
-export async function solicitarIA({ tipoSolicitud, contexto, imagenes = [] }) {
+export async function solicitarIA({ tipoSolicitud, contexto, imagenes = [], signal }) {
     if (!TIPOS_SOLICITUD_IA[tipoSolicitud]) throw new Error(`Tipo de solicitud IA no soportado: ${tipoSolicitud}`);
     const modelo = obtenerConfig().modeloIA || "";
-    const r = await llamarBackend("ia", { tipoSolicitud, contexto, imagenes, modelo }, { timeoutMs: 180000 });
+    const r = await llamarBackend("ia", { tipoSolicitud, contexto, imagenes, modelo }, { timeoutMs: 150000, signal });
     ultimoModelo = r.modelo || "";
     return r.resultado;
 }
